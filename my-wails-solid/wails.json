@@ -1,0 +1,13 @@
+{
+  "name": "my-wails-solid",
+  "outputfilename": "my-wails-solid",
+  "frontend:install": "npm install",
+  "frontend:build": "npm run build",
+  "frontend:dev:watcher": "npm run dev",
+  "frontend:dev:serverUrl": "auto",
+  "assetdir": "./frontend/dist",
+  "author": {
+    "name": "Jeremy",
+    "email": "jeremy.rodarellis@gmail.com"
+  }
+}
