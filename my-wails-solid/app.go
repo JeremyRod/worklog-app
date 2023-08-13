@@ -20,6 +20,7 @@ func (a *App) startup(ctx context.Context) {
 	// Perform your setup here
 	a.ctx = ctx
 	a.Greet("Jeremy")
+
 }
 
 // domReady is called after front-end resources have been loaded

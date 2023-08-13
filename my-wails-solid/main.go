@@ -24,12 +24,12 @@ func main() {
 	// Create application with options
 	err := wails.Run(&options.App{
 		Title:             "my-wails-solid",
-		Width:             1920,
-		Height:            1080,
+		Width:             1600,
+		Height:            900,
 		MinWidth:          0,
 		MinHeight:         0,
-		MaxWidth:          1920,
-		MaxHeight:         1080,
+		MaxWidth:          1600,
+		MaxHeight:         900,
 		DisableResize:     false,
 		Fullscreen:        false,
 		Frameless:         false,
