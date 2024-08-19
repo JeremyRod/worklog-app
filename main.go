@@ -138,6 +138,7 @@ func initialModel() model {
 			t.Placeholder = fmt.Sprintf("%v", tt.Format("15:04"))
 			t.Validate = timeValidator
 			t.CharLimit = 5
+			t.SetValue(fmt.Sprintf("%v", tt.Format("15:04")))
 
 		case hours:
 			t.Placeholder = "Hours (opt) HH:MM"
@@ -163,17 +164,24 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 
 		// Set focus to next input
-		case "tab", "shift+tab", "enter", "up", "down":
+		case "tab", "shift+tab", "enter", "up", "down", "left", "right":
 			s := msg.String()
 
 			// Did the user press enter while the submit button was focused?
 			// If so, exit.
 			if s == "enter" && m.focusIndex == len(m.inputs) {
+				entry := EntryRow{}
+				//Testing with local copy incase pointer edits data.
+				entry.FillData(m)
+				if err := db.SaveEntry(&entry); err != nil {
+					fmt.Println(err)
+					return m, tea.Quit
+				}
 				m.resetState()
 			}
 
 			// Cycle indexes
-			if s == "up" || s == "shift+tab" {
+			if s == "up" || s == "shift+tab" || s == "left" {
 				m.focusIndex--
 			} else {
 				m.focusIndex++
@@ -251,36 +259,38 @@ func (m model) View() string {
 
 func (m *model) resetState() {
 	//fmt.Println(m.inputs[hours].Value())
+	t := time.Now()
 	for v := range m.inputs {
 		m.inputs[v].Reset()
 	}
+	m.inputs[date].SetValue(fmt.Sprintf("%v", t.Format("02/01/2006")))
+	m.inputs[endTime].SetValue(fmt.Sprintf("%v", t.Format("15:04")))
+
 }
 
 var db Database = Database{db: nil}
 
 func main() {
 
-	// ent := Entry{hours: 4.2, projCode: "RPT", desc: "Hello this is my life now"}
-	// row := EntryRow{entry: ent, entryId: 99}
 	// row2 := EntryRow{entry: Entry{hours: 3.1, projCode: "EOS", desc: "hih"}, entryId: 100}
-	// if err := db.OpenDatabase(); err != nil {
-	// 	db.CreateDatabase()
-	// }
-
-	// if err := db.SaveEntry(&row); err != nil {
-	// 	fmt.Println(err)
-	// }
+	if err := db.OpenDatabase(); err != nil {
+		fmt.Println(err)
+		err = db.CreateDatabase()
+		if err != nil {
+			fmt.Printf("err: %v", err)
+		}
+	}
 	// if err := db.SaveEntry(&row2); err != nil {
 	// 	fmt.Println(err)
 	// }
 	// if err := db.DeleteEntry(&row); err != nil {
 	// 	fmt.Println(err)
 	// }
-	// db.CloseDatabase()
 
 	p := tea.NewProgram(initialModel())
 	if _, err := p.Run(); err != nil {
 		fmt.Printf("Alas, there's been an error: %v", err)
 		os.Exit(1)
 	}
+	db.CloseDatabase()
 }

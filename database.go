@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"os"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -13,15 +12,15 @@ import (
 
 type Database struct {
 	db *sql.DB
-	id int
 }
 
 type Entry struct {
-	hours     float64
+	hours     time.Duration
 	projCode  string
 	desc      string
 	startTime time.Time
 	endTime   time.Time
+	date      time.Time
 }
 
 type EntryRow struct {
@@ -32,15 +31,17 @@ type EntryRow struct {
 func (d *Database) SaveEntry(entry *EntryRow) error {
 	tx, err := d.db.Begin()
 	if err != nil {
-		log.Fatal(err)
+		fmt.Println(err)
 	}
-	stmt, err := tx.Prepare("insert into worklog(id, hours, desc, projcode) values(?, ?, ?, ?)")
+	stmt, err := tx.Prepare("insert into worklog(hours, desc, projcode, starttime, endtime, date) values(?, ?, ?, ?, ?, ?)")
 
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer stmt.Close()
-	_, err = stmt.Exec(entry.entryId, entry.entry.hours, entry.entry.desc, entry.entry.projCode)
+	_, err = stmt.Exec(entry.entry.hours,
+		entry.entry.desc, entry.entry.projCode, entry.entry.startTime,
+		entry.entry.endTime, entry.entry.date)
 	if err != nil {
 		fmt.Println(err)
 		return err
@@ -90,21 +91,13 @@ func (d *Database) QueryEntries(id int) ([]EntryRow, error) {
 }
 
 func (d *Database) CreateDatabase() error {
-	os.Remove("./worklog.db")
-
-	db, err := sql.Open("sqlite3", "./worklog.db")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer db.Close()
 
 	sqlStmt := `
-	create table worklog (id integer not null primary key, hours float,
-	starttime time not null, endtime time, desc text,
-	projcode text not null, check(hours is not null or endtime is not null));
+	create table worklog (id integer not null primary key, hours time, desc text, starttime time not null, endtime time, projcode text not null, date date not null
+	CHECK (hours IS NOT NULL OR endtime IS NOT NULL));
 	delete from worklog;
 	`
-	_, err = db.Exec(sqlStmt)
+	_, err := d.db.Exec(sqlStmt)
 	if err != nil {
 		log.Printf("%q: %s\n", err, sqlStmt)
 		return fmt.Errorf("db stmt fail %q: %s", err, sqlStmt)
@@ -137,13 +130,44 @@ func (d *Database) SeedDatabase() error {
 
 func (d *Database) OpenDatabase() error {
 	db, err := sql.Open("sqlite3", "./worklog.db")
-	d.db = db
 	if err != nil {
-		return errors.New("database not exist")
+		return errors.New("database broke")
+	}
+	d.db = db
+	_, err = d.db.Query("select * from worklog;")
+	if err != nil {
+		d.CreateDatabase()
 	}
 	return nil
 }
 
 func (d *Database) CloseDatabase() {
 	d.db.Close()
+}
+
+func (e *EntryRow) FillData(m model) {
+	timeFmt := "15:04"
+	dateFmt := "02/01/2006"
+	var err error
+	e.entry.hours, err = time.ParseDuration(m.inputs[hours].Value())
+	if err != nil {
+		fmt.Println(err)
+	}
+	e.entry.startTime, err = time.Parse(timeFmt, m.inputs[startTime].Value())
+	if err != nil {
+		fmt.Println(err)
+	}
+	e.entry.endTime, err = time.Parse(timeFmt, m.inputs[endTime].Value())
+	if err != nil {
+		fmt.Println(err)
+	}
+	e.entry.date, err = time.Parse(dateFmt, m.inputs[date].Value())
+	if err != nil {
+		fmt.Println(err)
+	}
+	e.entry.projCode = m.inputs[code].Value()
+	e.entry.desc = m.inputs[desc].Value()
+	if e.entry.hours == 0 {
+		e.entry.hours = time.Duration(e.entry.endTime.Sub(e.entry.startTime).Minutes())
+	}
 }
