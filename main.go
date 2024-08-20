@@ -37,6 +37,16 @@ var (
 	submitFailed  bool = false
 )
 
+var (
+	inactiveTabBorder = tabBorderWithBottom("┴", "─", "┴")
+	activeTabBorder   = tabBorderWithBottom("┘", " ", "└")
+	docStyle          = lipgloss.NewStyle().Padding(1, 2, 1, 2)
+	highlightColor    = lipgloss.AdaptiveColor{Light: "#874BFD", Dark: "#7D56F4"}
+	inactiveTabStyle  = lipgloss.NewStyle().Border(inactiveTabBorder, true).BorderForeground(highlightColor).Padding(0, 1)
+	activeTabStyle    = inactiveTabStyle.Border(activeTabBorder, true)
+	windowStyle       = lipgloss.NewStyle().BorderForeground(highlightColor).Padding(2, 0).Align(lipgloss.Left).Border(lipgloss.NormalBorder()).UnsetBorderTop()
+)
+
 const (
 	date = iota
 	code
@@ -45,6 +55,11 @@ const (
 	endTime
 	hours
 	submit
+)
+
+const (
+	newEntry = iota
+	getEntries
 )
 
 func dateValidator(s string) error {
@@ -101,9 +116,10 @@ func timeValidator(s string) error {
 
 func initialModel() model {
 	m := model{
-		inputs: make([]textinput.Model, submit),
+		inputs:     make([]textinput.Model, submit),
+		Tabs:       []string{"New Entry", "ddddddddddddddddddd"},
+		TabContent: []string{"sssssssssssssssssssss"},
 	}
-
 	var t textinput.Model
 	tt := time.Now()
 
@@ -152,7 +168,6 @@ func initialModel() model {
 }
 
 func (m model) Init() tea.Cmd {
-
 	return nil
 }
 
@@ -174,15 +189,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				//Testing with local copy incase pointer edits data.
 				entry.FillData(m)
 				if err := db.SaveEntry(&entry); err != nil {
-					fmt.Println(err)
-					return m, tea.Quit
+					submitFailed = true
+				} else {
+					submitFailed = false
+					m.resetState()
 				}
-				m.resetState()
 			}
 
 			// Cycle indexes
-			if s == "up" || s == "shift+tab" || s == "left" {
+			if s == "up" || s == "shift+tab" {
 				m.focusIndex--
+			} else if s == "left" {
+				m.activeTab = max(m.activeTab-1, 0)
+			} else if s == "right" {
+				m.activeTab = min(m.activeTab+1, len(m.Tabs)-1)
 			} else {
 				m.focusIndex++
 			}
@@ -218,6 +238,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
+func tabBorderWithBottom(left, middle, right string) lipgloss.Border {
+	border := lipgloss.RoundedBorder()
+	border.BottomLeft = left
+	border.Bottom = middle
+	border.BottomRight = right
+	return border
+}
+
 func (m *model) updateInputs(msg tea.Msg) tea.Cmd {
 	cmds := make([]tea.Cmd, len(m.inputs))
 
@@ -231,12 +259,14 @@ func (m *model) updateInputs(msg tea.Msg) tea.Cmd {
 }
 
 func (m model) View() string {
+	var s strings.Builder
 	var b strings.Builder
+	var renderedTabs []string
 
 	for i := range m.inputs {
-		b.WriteString(m.inputs[i].View())
+		s.WriteString(m.inputs[i].View())
 		if i < len(m.inputs)-1 {
-			b.WriteRune('\n')
+			s.WriteRune('\n')
 		}
 	}
 
@@ -244,17 +274,48 @@ func (m model) View() string {
 	if m.focusIndex == len(m.inputs) {
 		button = &focusedButton
 	}
-	fmt.Fprintf(&b, "\n\n%s\n\n", *button)
+	fmt.Fprintf(&s, "\n\n%s\n\n", *button)
+	m.TabContent = append(m.TabContent, s.String())
+
+	// m.TabContent = append(m.TabContent)
+
+	for i, t := range m.Tabs {
+		var style lipgloss.Style
+		isFirst, isLast, isActive := i == 0, i == len(m.Tabs)-1, i == m.activeTab
+		if isActive {
+			style = activeTabStyle
+		} else {
+			style = inactiveTabStyle
+		}
+		border, _, _, _, _ := style.GetBorder()
+		if isFirst && isActive {
+			border.BottomLeft = "│"
+		} else if isFirst && !isActive {
+			border.BottomLeft = "├"
+		} else if isLast && isActive {
+			border.BottomRight = "│"
+		} else if isLast && !isActive {
+			border.BottomRight = "┤"
+		}
+		style = style.Border(border)
+		renderedTabs = append(renderedTabs, style.Render(t))
+	}
+
+	row := lipgloss.JoinHorizontal(lipgloss.Top, renderedTabs...)
+	b.WriteString(row)
+	b.WriteString("\n")
+	b.WriteString(windowStyle.Width((lipgloss.Width(row) - windowStyle.GetHorizontalFrameSize())).Height(10).Render(m.TabContent[m.activeTab]))
+	b.WriteString("\n")
 
 	if submitFailed {
 		b.WriteString(helpStyle.Render("Please fix input issues and try again"))
 	} else {
 		b.WriteString(helpStyle.Render("cursor mode is "))
 	}
-	//b.WriteString(cursorModeHelpStyle.Render(m.cursorMode.String()))
-	//b.WriteString(helpStyle.Render(" (ctrl+r to change style)"))
+	b.WriteString(cursorModeHelpStyle.Render(m.cursorMode.String()))
+	b.WriteString(helpStyle.Render(" (ctrl+r to change style)"))
 
-	return b.String()
+	return docStyle.Render(b.String())
 }
 
 func (m *model) resetState() {
@@ -265,7 +326,20 @@ func (m *model) resetState() {
 	}
 	m.inputs[date].SetValue(fmt.Sprintf("%v", t.Format("02/01/2006")))
 	m.inputs[endTime].SetValue(fmt.Sprintf("%v", t.Format("15:04")))
+}
 
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 var db Database = Database{db: nil}

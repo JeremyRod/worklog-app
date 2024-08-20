@@ -68,7 +68,7 @@ func (d *Database) ModifyEntry(entry *EntryRow) error {
 }
 
 func (d *Database) QueryEntries(id int) ([]EntryRow, error) {
-	rows, err := d.db.Query("select id, projcode, hours from worklog")
+	rows, err := d.db.Query("select id, projcode, hours, desc from worklog")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -76,11 +76,11 @@ func (d *Database) QueryEntries(id int) ([]EntryRow, error) {
 	ents := []EntryRow{}
 	for rows.Next() {
 		ent := EntryRow{}
-		err = rows.Scan(&ent.entryId, &ent.entry.projCode, &ent.entry.hours)
+		err = rows.Scan(&ent.entryId, &ent.entry.projCode, &ent.entry.hours, &ent.entry.desc)
 		if err != nil {
 			log.Fatal(err)
 		}
-		fmt.Println(ent.entryId, ent.entry.projCode)
+		//fmt.Println(ent.entryId, ent.entry.projCode)
 		ents = append(ents, ent)
 	}
 	err = rows.Err()
@@ -151,19 +151,19 @@ func (e *EntryRow) FillData(m model) {
 	var err error
 	e.entry.hours, err = time.ParseDuration(m.inputs[hours].Value())
 	if err != nil {
-		fmt.Println(err)
+		//fmt.Println(err)
 	}
 	e.entry.startTime, err = time.Parse(timeFmt, m.inputs[startTime].Value())
 	if err != nil {
-		fmt.Println(err)
+		// log.Printf()
 	}
 	e.entry.endTime, err = time.Parse(timeFmt, m.inputs[endTime].Value())
 	if err != nil {
-		fmt.Println(err)
+		// fmt.Println(err)
 	}
 	e.entry.date, err = time.Parse(dateFmt, m.inputs[date].Value())
 	if err != nil {
-		fmt.Println(err)
+		// fmt.Println(err)
 	}
 	e.entry.projCode = m.inputs[code].Value()
 	e.entry.desc = m.inputs[desc].Value()
