@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/bubbles/cursor"
+	"github.com/charmbracelet/bubbles/paginator"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -22,6 +23,9 @@ type model struct {
 	Tabs       []string
 	TabContent []string
 	activeTab  int
+
+	items     []string
+	paginator paginator.Model
 }
 
 var (
@@ -32,9 +36,13 @@ var (
 	helpStyle           = blurredStyle
 	cursorModeHelpStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
 
-	focusedButton      = focusedStyle.Render("[ Submit ]")
-	blurredButton      = fmt.Sprintf("[ %s ]", blurredStyle.Render("Submit"))
-	submitFailed  bool = false
+	focusedButton        = focusedStyle.Render("[ Submit ]")
+	blurredButton        = fmt.Sprintf("[ %s ]", blurredStyle.Render("Submit"))
+	prevButtonFocus      = focusedStyle.Render("[ Prev ]")
+	prevButtonBlur       = fmt.Sprintf("[ %s ]", blurredStyle.Render("Prev"))
+	nextButtonFocus      = focusedStyle.Render("[ Next ]")
+	nextButtonBlur       = fmt.Sprintf("[ %s ]", blurredStyle.Render("Next"))
+	submitFailed    bool = false
 )
 
 var (
@@ -58,8 +66,9 @@ const (
 )
 
 const (
-	newEntry = iota
-	getEntries
+	New = iota
+	Get
+	Modify
 )
 
 func dateValidator(s string) error {
@@ -117,11 +126,28 @@ func timeValidator(s string) error {
 func initialModel() model {
 	m := model{
 		inputs:     make([]textinput.Model, submit),
-		Tabs:       []string{"New Entry", "ddddddddddddddddddd"},
-		TabContent: []string{"sssssssssssssssssssss"},
+		Tabs:       []string{"New Entry", "View Entries", "Modify Entry"},
+		TabContent: []string{},
 	}
+
 	var t textinput.Model
 	tt := time.Now()
+	var items []string
+
+	for i := 1; i < 101; i++ {
+		text := fmt.Sprintf("Item %d", i)
+		items = append(items, text)
+	}
+
+	p := paginator.New()
+	p.Type = paginator.Dots
+	p.PerPage = 10
+	p.ActiveDot = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "235", Dark: "252"}).Render("•")
+	p.InactiveDot = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "250", Dark: "238"}).Render("•")
+	p.SetTotalPages(len(items))
+
+	m.paginator = p
+	m.items = items
 
 	for i := range m.inputs {
 		t = textinput.New()
@@ -163,6 +189,7 @@ func initialModel() model {
 		}
 		m.inputs[i] = t
 	}
+
 	m.cursorMode = cursor.CursorStatic
 	return m
 }
@@ -182,53 +209,65 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "tab", "shift+tab", "enter", "up", "down", "left", "right":
 			s := msg.String()
 
-			// Did the user press enter while the submit button was focused?
-			// If so, exit.
-			if s == "enter" && m.focusIndex == len(m.inputs) {
-				entry := EntryRow{}
-				//Testing with local copy incase pointer edits data.
-				entry.FillData(m)
-				if err := db.SaveEntry(&entry); err != nil {
-					submitFailed = true
+			if m.activeTab == New {
+				// Did the user press enter while the submit button was focused?
+				// If so, exit.
+				if s == "enter" && m.focusIndex == len(m.inputs) {
+					entry := EntryRow{}
+					//Testing with local copy incase pointer edits data.
+					entry.FillData(m)
+					if err := db.SaveEntry(&entry); err != nil {
+						submitFailed = true
+					} else {
+						submitFailed = false
+						m.resetState()
+					}
+				}
+
+				// Cycle indexes
+				if s == "up" || s == "shift+tab" {
+					m.focusIndex--
+				} else if s == "left" {
+					m.activeTab = max(m.activeTab-1, 0)
+				} else if s == "right" {
+					m.activeTab = min(m.activeTab+1, len(m.Tabs)-1)
 				} else {
-					submitFailed = false
-					m.resetState()
+					m.focusIndex++
 				}
-			}
 
-			// Cycle indexes
-			if s == "up" || s == "shift+tab" {
-				m.focusIndex--
-			} else if s == "left" {
-				m.activeTab = max(m.activeTab-1, 0)
-			} else if s == "right" {
-				m.activeTab = min(m.activeTab+1, len(m.Tabs)-1)
-			} else {
-				m.focusIndex++
-			}
-
-			if m.focusIndex > len(m.inputs) {
-				m.focusIndex = 0
-			} else if m.focusIndex < 0 {
-				m.focusIndex = len(m.inputs)
-			}
-
-			cmds := make([]tea.Cmd, len(m.inputs))
-			for i := 0; i <= len(m.inputs)-1; i++ {
-				if i == m.focusIndex {
-					// Set focused state
-					cmds[i] = m.inputs[i].Focus()
-					m.inputs[i].PromptStyle = focusedStyle
-					m.inputs[i].TextStyle = focusedStyle
-					continue
+				if m.focusIndex > len(m.inputs) {
+					m.focusIndex = 0
+				} else if m.focusIndex < 0 {
+					m.focusIndex = len(m.inputs)
 				}
-				// Remove focused state
-				m.inputs[i].Blur()
-				m.inputs[i].PromptStyle = noStyle
-				m.inputs[i].TextStyle = noStyle
-			}
 
-			return m, tea.Batch(cmds...)
+				cmds := make([]tea.Cmd, len(m.inputs))
+				for i := 0; i <= len(m.inputs)-1; i++ {
+					if i == m.focusIndex {
+						// Set focused state
+						cmds[i] = m.inputs[i].Focus()
+						m.inputs[i].PromptStyle = focusedStyle
+						m.inputs[i].TextStyle = focusedStyle
+						continue
+					}
+					// Remove focused state
+					m.inputs[i].Blur()
+					m.inputs[i].PromptStyle = noStyle
+					m.inputs[i].TextStyle = noStyle
+				}
+				return m, tea.Batch(cmds...)
+			} else if m.activeTab == Get {
+				var cmd tea.Cmd
+				if s == "q" || s == "esc" || s == "ctrl+c" {
+					return m, tea.Quit
+				}
+
+				m.paginator, cmd = m.paginator.Update(msg)
+				return m, cmd
+
+			} else if m.activeTab == Modify {
+
+			}
 		}
 	}
 
@@ -259,25 +298,51 @@ func (m *model) updateInputs(msg tea.Msg) tea.Cmd {
 }
 
 func (m model) View() string {
-	var s strings.Builder
 	var b strings.Builder
 	var renderedTabs []string
 
-	for i := range m.inputs {
-		s.WriteString(m.inputs[i].View())
-		if i < len(m.inputs)-1 {
-			s.WriteRune('\n')
+	for j := range m.Tabs {
+		var s strings.Builder
+		switch j {
+		case New:
+			for i := range m.inputs {
+				s.WriteString(m.inputs[i].View())
+				if i < len(m.inputs)-1 {
+					s.WriteRune('\n')
+				}
+			}
+
+			button := &blurredButton
+			if m.focusIndex == len(m.inputs) {
+				button = &focusedButton
+			}
+			fmt.Fprintf(&s, "\n\n%s\n\n", *button)
+		case Get:
+			s.WriteString("\n  Paginator Example\n\n")
+			start, end := m.paginator.GetSliceBounds(len(m.items))
+			for _, item := range m.items[start:end] {
+				s.WriteString("  • " + item + "\n\n")
+			}
+			s.WriteString("  " + m.paginator.View())
+			s.WriteString("\n\n  h/l ←/→ page • q: quit\n")
+
+			// button := &prevButtonBlur
+			// if m.focusIndex == len(m.inputs) {
+			// 	button = &prevButtonFocus
+			// }
+			// fmt.Fprintf(&s, "\n\n%s\n\n", *button)
+
+			// button2 := &nextButtonBlur
+			// if m.focusIndex == len(m.inputs) {
+			// 	button = &nextButtonFocus
+			// }
+			// fmt.Fprintf(&s, "\n\n%s\n\n", *button2)
+
+		case Modify:
+
 		}
+		m.TabContent = append(m.TabContent, s.String())
 	}
-
-	button := &blurredButton
-	if m.focusIndex == len(m.inputs) {
-		button = &focusedButton
-	}
-	fmt.Fprintf(&s, "\n\n%s\n\n", *button)
-	m.TabContent = append(m.TabContent, s.String())
-
-	// m.TabContent = append(m.TabContent)
 
 	for i, t := range m.Tabs {
 		var style lipgloss.Style
