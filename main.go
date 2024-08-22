@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/bubbles/cursor"
-	"github.com/charmbracelet/bubbles/paginator"
+	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -24,8 +24,7 @@ type model struct {
 	TabContent []string
 	activeTab  int
 
-	items     []string
-	paginator paginator.Model
+	list list.Model
 }
 
 var (
@@ -54,6 +53,14 @@ var (
 	activeTabStyle    = inactiveTabStyle.Border(activeTabBorder, true)
 	windowStyle       = lipgloss.NewStyle().BorderForeground(highlightColor).Padding(2, 0).Align(lipgloss.Left).Border(lipgloss.NormalBorder()).UnsetBorderTop()
 )
+
+type item struct {
+	title, desc string
+}
+
+func (i item) Title() string       { return i.title }
+func (i item) Description() string { return i.desc }
+func (i item) FilterValue() string { return i.title }
 
 const (
 	date = iota
@@ -128,26 +135,40 @@ func initialModel() model {
 		inputs:     make([]textinput.Model, submit),
 		Tabs:       []string{"New Entry", "View Entries", "Modify Entry"},
 		TabContent: []string{},
+		list:       list.Model{},
 	}
 
 	var t textinput.Model
 	tt := time.Now()
-	var items []string
 
-	for i := 1; i < 101; i++ {
-		text := fmt.Sprintf("Item %d", i)
-		items = append(items, text)
+	items := []list.Item{
+		item{title: "Raspberry Pi’s", desc: "I have ’em all over my house"},
+		item{title: "Nutella", desc: "It's good on toast"},
+		item{title: "Bitter melon", desc: "It cools you down"},
+		item{title: "Nice socks", desc: "And by that I mean socks without holes"},
+		item{title: "Eight hours of sleep", desc: "I had this once"},
+		item{title: "Cats", desc: "Usually"},
+		item{title: "Plantasia, the album", desc: "My plants love it too"},
+		item{title: "Pour over coffee", desc: "It takes forever to make though"},
+		item{title: "VR", desc: "Virtual reality...what is there to say?"},
+		item{title: "Noguchi Lamps", desc: "Such pleasing organic forms"},
+		item{title: "Linux", desc: "Pretty much the best OS"},
+		item{title: "Business school", desc: "Just kidding"},
+		item{title: "Pottery", desc: "Wet clay is a great feeling"},
+		item{title: "Shampoo", desc: "Nothing like clean hair"},
+		item{title: "Table tennis", desc: "It’s surprisingly exhausting"},
+		item{title: "Milk crates", desc: "Great for packing in your extra stuff"},
+		item{title: "Afternoon tea", desc: "Especially the tea sandwich part"},
+		item{title: "Stickers", desc: "The thicker the vinyl the better"},
+		item{title: "20° Weather", desc: "Celsius, not Fahrenheit"},
+		item{title: "Warm light", desc: "Like around 2700 Kelvin"},
+		item{title: "The vernal equinox", desc: "The autumnal equinox is pretty good too"},
+		item{title: "Gaffer’s tape", desc: "Basically sticky fabric"},
+		item{title: "Terrycloth", desc: "In other words, towel fabric"},
 	}
 
-	p := paginator.New()
-	p.Type = paginator.Dots
-	p.PerPage = 10
-	p.ActiveDot = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "235", Dark: "252"}).Render("•")
-	p.InactiveDot = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "250", Dark: "238"}).Render("•")
-	p.SetTotalPages(len(items))
-
-	m.paginator = p
-	m.items = items
+	m.list = list.New(items, list.NewDefaultDelegate(), 0, 0)
+	m.list.Title = "My Fave Things"
 
 	for i := range m.inputs {
 		t = textinput.New()
@@ -199,15 +220,15 @@ func (m model) Init() tea.Cmd {
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
+	switch msgg := msg.(type) {
 	case tea.KeyMsg:
-		switch msg.String() {
+		switch msgg.String() {
 		case "ctrl+c", "esc":
 			return m, tea.Quit
 
 		// Set focus to next input
 		case "tab", "shift+tab", "enter", "up", "down", "left", "right":
-			s := msg.String()
+			s := msgg.String()
 
 			if m.activeTab == New {
 				// Did the user press enter while the submit button was focused?
@@ -258,14 +279,30 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Batch(cmds...)
 			} else if m.activeTab == Get {
 				var cmd tea.Cmd
-				if s == "q" || s == "esc" || s == "ctrl+c" {
-					return m, tea.Quit
+
+				switch masg := msg.(type) {
+				case tea.KeyMsg:
+					if s == "ctrl+c" {
+						return m, tea.Quit
+					} else if s == "left" {
+						m.activeTab = max(m.activeTab-1, 0)
+					} else if s == "right" {
+						m.activeTab = min(m.activeTab+1, len(m.Tabs)-1)
+					}
+				case tea.WindowSizeMsg:
+					h, v := docStyle.GetFrameSize()
+					m.list.SetSize(masg.Width-h, masg.Height-v)
+
 				}
 
-				m.paginator, cmd = m.paginator.Update(msg)
+				m.list, cmd = m.list.Update(msg)
 				return m, cmd
-
 			} else if m.activeTab == Modify {
+				if s == "left" {
+					m.activeTab = max(m.activeTab-1, 0)
+				} else if s == "right" {
+					m.activeTab = min(m.activeTab+1, len(m.Tabs)-1)
+				}
 
 			}
 		}
@@ -318,13 +355,7 @@ func (m model) View() string {
 			}
 			fmt.Fprintf(&s, "\n\n%s\n\n", *button)
 		case Get:
-			s.WriteString("\n  Paginator Example\n\n")
-			start, end := m.paginator.GetSliceBounds(len(m.items))
-			for _, item := range m.items[start:end] {
-				s.WriteString("  • " + item + "\n\n")
-			}
-			s.WriteString("  " + m.paginator.View())
-			s.WriteString("\n\n  h/l ←/→ page • q: quit\n")
+			docStyle.Render(m.list.View())
 
 			// button := &prevButtonBlur
 			// if m.focusIndex == len(m.inputs) {
@@ -426,7 +457,7 @@ func main() {
 	// 	fmt.Println(err)
 	// }
 
-	p := tea.NewProgram(initialModel())
+	p := tea.NewProgram(initialModel(), tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Printf("Alas, there's been an error: %v", err)
 		os.Exit(1)
