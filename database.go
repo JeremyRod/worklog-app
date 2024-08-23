@@ -67,8 +67,17 @@ func (d *Database) ModifyEntry(entry *EntryRow) error {
 	return nil
 }
 
-func (d *Database) QueryEntries(id int) ([]EntryRow, error) {
-	rows, err := d.db.Query("select id, projcode, hours, desc from worklog")
+func (d *Database) QueryEntries(m *model) ([]EntryRow, error) {
+	var (
+		rows *sql.Rows
+		err  error
+	)
+
+	if m.id == 0 {
+		rows, err = d.db.Query("select date, id, projcode, hours, desc from worklog order by id desc limit 10")
+	} else {
+		rows, err = d.db.Query(fmt.Sprintf("select date, id, projcode, hours, desc from worklog order by id desc limit 10, %d", m.id))
+	}
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -76,12 +85,13 @@ func (d *Database) QueryEntries(id int) ([]EntryRow, error) {
 	ents := []EntryRow{}
 	for rows.Next() {
 		ent := EntryRow{}
-		err = rows.Scan(&ent.entryId, &ent.entry.projCode, &ent.entry.hours, &ent.entry.desc)
+		err = rows.Scan(&ent.entry.date, &ent.entryId, &ent.entry.projCode, &ent.entry.hours, &ent.entry.desc)
 		if err != nil {
 			log.Fatal(err)
 		}
 		//fmt.Println(ent.entryId, ent.entry.projCode)
 		ents = append(ents, ent)
+		m.id = ent.entryId
 	}
 	err = rows.Err()
 	if err != nil {
