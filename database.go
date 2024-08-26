@@ -7,6 +7,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/charmbracelet/bubbles/textinput"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -53,7 +54,7 @@ func (d *Database) SaveEntry(entry *EntryRow) error {
 	return nil
 }
 
-func (d *Database) DeleteEntry(entry *EntryRow) error {
+func (d *Database) DeleteEntry(entry EntryRow) error {
 	sqlstmt := fmt.Sprintf(`delete from worklog where id = %d`, entry.entryId)
 	_, err := d.db.Exec(sqlstmt)
 	if err != nil {
@@ -63,7 +64,34 @@ func (d *Database) DeleteEntry(entry *EntryRow) error {
 	return nil
 }
 
-func (d *Database) ModifyEntry(entry *EntryRow) error {
+func (d *Database) ModifyEntry(e EntryRow) error {
+	// TODO: Could optimise to only update what is changed
+	sqlstmt := fmt.Sprintf(`Update worklog set desc = ?, 
+							hours = ?, 
+							projcode = ?, 
+							date = ?, 
+							starttime = ?, 
+							endtime = ? where id = ?;`)
+	tx, err := d.db.Begin()
+	if err != nil {
+		fmt.Println(err)
+	}
+	stmt, err := tx.Prepare(sqlstmt)
+	if err != nil {
+		fmt.Println(err)
+	}
+	defer stmt.Close()
+	_, err = stmt.Exec(e.entry.desc, e.entry.hours,
+		e.entry.projCode, e.entry.date, e.entry.startTime,
+		e.entry.endTime, e.entryId)
+	if err != nil {
+		fmt.Println(err)
+	}
+	err = tx.Commit()
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	return nil
 }
 
@@ -100,11 +128,33 @@ func (d *Database) QueryEntries(m *model) ([]EntryRow, error) {
 	return ents, nil
 }
 
+func (d *Database) QueryEntry(e EntryRow) (EntryRow, error) {
+	var (
+		rows *sql.Rows
+		err  error
+	)
+
+	rows, err = d.db.Query("select date, id, projcode, hours, desc, starttime, endtime from worklog where id = %d", e.entryId)
+	defer rows.Close()
+	var ent EntryRow
+	for rows.Next() {
+		err = rows.Scan(&ent.entry.date, &ent.entryId, &ent.entry.projCode, &ent.entry.hours, &ent.entry.desc, &ent.entry.startTime, &ent.entry.endTime)
+		if err != nil {
+			log.Fatal(err)
+		}
+		//fmt.Println(ent.entryId, ent.entry.projCode)
+	}
+	err = rows.Err()
+	if err != nil {
+		log.Fatal(err)
+	}
+	return ent, nil
+}
+
 func (d *Database) CreateDatabase() error {
 
 	sqlStmt := `
-	create table worklog (id integer not null primary key, hours time, desc text, starttime time not null, endtime time, projcode text not null, date date not null
-	CHECK (hours IS NOT NULL OR endtime IS NOT NULL));
+	create table worklog (id integer not null primary key, hours time not null, desc text, starttime time not null, endtime time, projcode text not null, date date not null
 	delete from worklog;
 	`
 	_, err := d.db.Exec(sqlStmt)
@@ -115,6 +165,7 @@ func (d *Database) CreateDatabase() error {
 	return nil
 }
 
+// TODO: Seed database for better tests.
 func (d *Database) SeedDatabase() error {
 	tx, err := d.db.Begin()
 	if err != nil {
@@ -155,29 +206,30 @@ func (d *Database) CloseDatabase() {
 	d.db.Close()
 }
 
-func (e *EntryRow) FillData(m model) {
+func (e *EntryRow) FillData(inputs []textinput.Model) error {
 	timeFmt := "15:04"
 	dateFmt := "02/01/2006"
 	var err error
-	e.entry.hours, err = time.ParseDuration(m.inputs[hours].Value())
+	e.entry.hours, err = time.ParseDuration(inputs[hours].Value())
 	if err != nil {
-		//fmt.Println(err)
+		return fmt.Errorf("%s", err)
 	}
-	e.entry.startTime, err = time.Parse(timeFmt, m.inputs[startTime].Value())
+	e.entry.startTime, err = time.Parse(timeFmt, inputs[startTime].Value())
+	if err != nil && !e.entry.startTime.IsZero() {
+		return fmt.Errorf("%s", err)
+	}
+	e.entry.endTime, err = time.Parse(timeFmt, inputs[endTime].Value())
+	if err != nil && !e.entry.endTime.IsZero() {
+		return fmt.Errorf("%s", err)
+	}
+	e.entry.date, err = time.Parse(dateFmt, inputs[date].Value())
 	if err != nil {
-		// log.Printf()
+		return fmt.Errorf("%s", err)
 	}
-	e.entry.endTime, err = time.Parse(timeFmt, m.inputs[endTime].Value())
-	if err != nil {
-		// fmt.Println(err)
-	}
-	e.entry.date, err = time.Parse(dateFmt, m.inputs[date].Value())
-	if err != nil {
-		// fmt.Println(err)
-	}
-	e.entry.projCode = m.inputs[code].Value()
-	e.entry.desc = m.inputs[desc].Value()
+	e.entry.projCode = inputs[code].Value()
+	e.entry.desc = inputs[desc].Value()
 	if e.entry.hours == 0 {
-		e.entry.hours = time.Duration(e.entry.endTime.Sub(e.entry.startTime).Minutes())
+		e.entry.hours = time.Duration(e.entry.endTime.Sub(e.entry.startTime))
 	}
+	return nil
 }

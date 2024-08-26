@@ -16,13 +16,18 @@ import (
 )
 
 type model struct {
-	inputs     []textinput.Model // items on the to-do list
-	focusIndex int               // which to-do list item our cursor is pointing at
-	cursorMode cursor.Mode       // which to-do items are selected
+	inputs        []textinput.Model // items on the to-do list
+	focusIndex    int               // which to-do list item our cursor is pointing at
+	modInputs     []textinput.Model // items for the modify list, same as the new list.
+	modFocusIndex int               // Focus index for Modify List
+	cursorMode    cursor.Mode       // which to-do items are selected
+	modRowID      int
 
 	list  list.Model
 	state ViewState
 	id    int // Last current query id
+	winH  int
+	winW  int
 }
 
 type ListModel struct {
@@ -42,15 +47,18 @@ var (
 	docStyle                 = lipgloss.NewStyle().Margin(2, 2)
 	focusedButton            = focusedStyle.Render("[ Submit ]")
 	blurredButton            = fmt.Sprintf("[ %s ]", blurredStyle.Render("Submit"))
-	prevButtonFocus          = focusedStyle.Render("[ Prev ]")
-	prevButtonBlur           = fmt.Sprintf("[ %s ]", blurredStyle.Render("Prev"))
-	nextButtonFocus          = focusedStyle.Render("[ Next ]")
-	nextButtonBlur           = fmt.Sprintf("[ %s ]", blurredStyle.Render("Next"))
+	focusDelete              = focusedStyle.Render("[ Delete ]")
+	blurDelete               = blurredStyle.Render("[ Delete ]")
+	focusSave                = focusedStyle.Render("[ Save ]")
+	blurSave                 = blurredStyle.Render("[ Save ]")
 	submitFailed        bool = false
 )
 
+// FIXME: Fix the formatting here
 func (e EntryRow) Title() string {
-	return fmt.Sprintf("%d: %v: %s: %v", e.entryId, e.entry.date, e.entry.projCode, e.entry.hours)
+	date := e.entry.date.Format("02/01/2006")
+	time := e.entry.hours.Hours()
+	return fmt.Sprintf("%d: Date: %v Project: %s Hours: %.2f", e.entryId, date, e.entry.projCode, time)
 }
 func (e EntryRow) Description() string { return e.entry.desc }
 func (e EntryRow) FilterValue() string { return e.entry.projCode }
@@ -63,6 +71,7 @@ const (
 	endTime
 	hours
 	submit
+	delete
 )
 
 type ViewState int
@@ -75,10 +84,11 @@ const (
 
 func initialModel() model {
 	m := model{
-		inputs: make([]textinput.Model, submit),
-		list:   list.Model{},
-		state:  New,
-		id:     0,
+		inputs:    make([]textinput.Model, submit),
+		modInputs: make([]textinput.Model, delete),
+		list:      list.Model{},
+		state:     New,
+		id:        0,
 	}
 
 	var t textinput.Model
@@ -130,6 +140,46 @@ func initialModel() model {
 		m.inputs[i] = t
 	}
 
+	for i := range m.modInputs {
+		t = textinput.New()
+		t.Cursor.Style = cursorStyle
+		t.CharLimit = 32
+
+		switch i {
+		case date:
+			t.Placeholder = fmt.Sprintf("%v", tt.Format("02/01/2006"))
+			t.EchoMode = textinput.EchoNormal
+			t.Validate = dateValidator
+			t.Focus()
+			t.SetValue(fmt.Sprintf("%v", tt.Format("02/01/2006")))
+
+		case code:
+			t.Placeholder = "Proj Code"
+			t.CharLimit = 10
+
+		case desc:
+			t.Placeholder = "Entry Desc"
+			t.CharLimit = 500
+			t.Width = 50
+
+		case startTime:
+			t.Placeholder = "Start time: HH:MM"
+			t.Validate = timeValidator
+			t.CharLimit = 5
+
+		case endTime:
+			t.Placeholder = fmt.Sprintf("%v", tt.Format("15:04"))
+			t.Validate = timeValidator
+			t.CharLimit = 5
+
+		case hours:
+			t.Placeholder = "Hours (opt) HH:MM"
+			t.Validate = timeValidator
+			t.CharLimit = 5
+		}
+		m.modInputs[i] = t
+	}
+
 	m.cursorMode = cursor.CursorStatic
 	return m
 }
@@ -142,9 +192,49 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	if m.state == Get {
 		switch msg := msg.(type) {
+		case tea.WindowSizeMsg:
+			h, v := docStyle.GetFrameSize()
+			m.winH = msg.Height - v
+			m.winW = msg.Width - h
+			m.list.SetSize(m.winW, m.winH)
+
 		case tea.KeyMsg:
 			switch msg.String() {
-			case "ctrl+p":
+
+			case "enter":
+				items := m.list.Items()
+				item := items[m.list.Cursor()].(EntryRow)
+
+				cmds := make([]tea.Cmd, len(m.modInputs))
+				for i := 0; i <= len(m.modInputs)-1; i++ {
+					if i == m.modFocusIndex {
+						// Set focused state
+						cmds[i] = m.modInputs[i].Focus()
+						m.modInputs[i].PromptStyle = focusedStyle
+						m.modInputs[i].TextStyle = focusedStyle
+						continue
+					}
+					// Remove focused state
+					m.modInputs[i].Blur()
+					m.modInputs[i].PromptStyle = noStyle
+					m.modInputs[i].TextStyle = noStyle
+				}
+				m.modInputs[date].SetValue(item.entry.date.String())
+				m.modInputs[code].SetValue(item.entry.projCode)
+				m.modInputs[desc].SetValue(item.entry.desc)
+				m.modInputs[startTime].SetValue(item.entry.startTime.String())
+				m.modInputs[endTime].SetValue(item.entry.endTime.String())
+				m.modInputs[hours].SetValue(item.entry.hours.String())
+
+				m.state = Modify
+				return m, tea.Batch(cmds...)
+
+				// db.ModifyEntry(item)
+			case "tab":
+				items := []list.Item{}
+				m.list = list.New(items, list.NewDefaultDelegate(), 0, 0)
+				m.list.Title = "Worklog Entries"
+				m.id = 0
 				m.state = New
 			}
 
@@ -164,26 +254,31 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case tea.WindowSizeMsg:
 			h, v := docStyle.GetFrameSize()
-			m.list.SetSize(msg.Width-h, msg.Height-v)
+			m.winH = msg.Height - v
+			m.winW = msg.Width - h
+			m.list.SetSize(m.winW, m.winH)
 
 		case tea.KeyMsg:
 			switch msg.String() {
 
-			case "ctrl+u":
+			case "tab":
 				e, err := db.QueryEntries(&m)
 				if err != nil {
 					return m, nil
 				}
 				for _, v := range e {
 					m.list.InsertItem(99999, v)
+					fmt.Println(v.entryId)
 				}
+
+				m.list.SetSize(m.winH, m.winH)
 				m.state = Get
 
 			case "ctrl+c", "esc":
 				return m, tea.Quit
 
 			// Set focus to next input
-			case "tab", "shift+tab", "enter", "up", "down", "left", "right":
+			case "enter", "up", "down", "left", "right":
 				s := msg.String()
 
 				// Did the user press enter while the submit button was focused?
@@ -191,7 +286,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if s == "enter" && m.focusIndex == len(m.inputs) {
 					entry := EntryRow{}
 					//Testing with local copy incase pointer edits data.
-					entry.FillData(m)
+					entry.FillData(m.inputs)
 					if err := db.SaveEntry(&entry); err != nil {
 						submitFailed = true
 					} else {
@@ -231,6 +326,74 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		// Handle character input and blinking
+		cmd = m.updateInputs(msg)
+	} else if m.state == Modify {
+		switch msg := msg.(type) {
+		case tea.WindowSizeMsg:
+			h, v := docStyle.GetFrameSize()
+			m.winH = msg.Height - v
+			m.winW = msg.Width - h
+
+		case tea.KeyMsg:
+			switch msg.String() {
+			case "ctrl+i": // Switch back to New entry screen.
+				m.state = New
+			case "tab":
+				items := []list.Item{}
+
+				m.list = list.New(items, list.NewDefaultDelegate(), 0, 0)
+				m.list.Title = "Worklog Entries"
+				m.id = 0
+				m.state = Get
+
+			case "enter", "up", "down", "left", "right":
+				s := msg.String()
+				if s == "enter" && m.modFocusIndex == len(m.modInputs)-1 {
+					entry := EntryRow{}
+					//Testing with local copy incase pointer edits data.
+					if err := entry.FillData(m.modInputs); err != nil {
+						return m, nil
+					}
+					if err := db.ModifyEntry(entry); err != nil {
+						submitFailed = true
+					} else {
+						submitFailed = false
+						m.resetState()
+					}
+				} else if s == "enter" && m.modFocusIndex == len(m.modInputs) {
+					entry := EntryRow{}
+					db.DeleteEntry(entry)
+				}
+
+				// Cycle indexes
+				if s == "up" || s == "shift+tab" {
+					m.focusIndex--
+				} else {
+					m.focusIndex++
+				}
+
+				if m.focusIndex > len(m.inputs) {
+					m.focusIndex = 0
+				} else if m.focusIndex < 0 {
+					m.focusIndex = len(m.inputs)
+				}
+				cmds := make([]tea.Cmd, len(m.inputs))
+				for i := 0; i <= len(m.inputs)-1; i++ {
+					if i == m.focusIndex {
+						// Set focused state
+						cmds[i] = m.inputs[i].Focus()
+						m.inputs[i].PromptStyle = focusedStyle
+						m.inputs[i].TextStyle = focusedStyle
+						continue
+					}
+					// Remove focused state
+					m.inputs[i].Blur()
+					m.inputs[i].PromptStyle = noStyle
+					m.inputs[i].TextStyle = noStyle
+				}
+				return m, tea.Batch(cmds...)
+			}
+		}
 		cmd = m.updateInputs(msg)
 	}
 
@@ -272,17 +435,24 @@ func (m model) View() string {
 			b.WriteString(fmt.Sprintf("%v", err))
 		}
 
-		// button := &prevButtonBlur
-		// if m.focusIndex == len(m.inputs) {
-		// 	button = &prevButtonFocus
-		// }
-		// fmt.Fprintf(&b, "\n\n%s\n\n", *button)
+	case Modify:
+		for i := range m.modInputs {
+			b.WriteString(m.modInputs[i].View())
+			if i < len(m.modInputs)-1 {
+				b.WriteRune('\n')
+			}
+		}
 
-		// button2 := &nextButtonBlur
-		// if m.focusIndex == len(m.inputs) {
-		// 	button = &nextButtonFocus
-		// }
-		// fmt.Fprintf(&b, "\n\n%s\n\n", *button2)
+		button := blurSave
+		if m.modFocusIndex == len(m.modInputs) {
+			button = focusSave
+		}
+		button2 := blurDelete
+		if m.modFocusIndex == len(m.modInputs) {
+			button = focusDelete
+		}
+		fmt.Fprintf(&b, "\n\n%s\t\t%s\n\n", button, button2)
+
 	}
 	if submitFailed {
 		b.WriteString(helpStyle.Render("Please fix input issues and try again"))
@@ -382,18 +552,4 @@ func timeValidator(s string) error {
 		}
 	}
 	return nil
-}
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }
