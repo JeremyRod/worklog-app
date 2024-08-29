@@ -10,3 +10,7 @@ It is a local based versions with a local database (sqlite)
 - Fixing bugs in list view of entries
 - Add more validation on new entries. 
 - Summary Page for Days, easily show work completed.
+
+### Known Bugs
+- If deleting an entry list will not update until navigating away and back
+- If adding an entry

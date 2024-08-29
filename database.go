@@ -29,7 +29,7 @@ type EntryRow struct {
 	entryId int
 }
 
-func (d *Database) SaveEntry(entry *EntryRow) error {
+func (d *Database) SaveEntry(entry EntryRow) error {
 	tx, err := d.db.Begin()
 	if err != nil {
 		fmt.Println(err)
@@ -54,24 +54,36 @@ func (d *Database) SaveEntry(entry *EntryRow) error {
 	return nil
 }
 
-func (d *Database) DeleteEntry(entry EntryRow) error {
-	sqlstmt := fmt.Sprintf(`delete from worklog where id = %d`, entry.entryId)
-	_, err := d.db.Exec(sqlstmt)
+func (d *Database) DeleteEntry(e int) error {
+	sqlstmt := `delete from worklog where id = ?;`
+	tx, err := d.db.Begin()
 	if err != nil {
 		fmt.Println(err)
-		return err
+	}
+	stmt, err := tx.Prepare(sqlstmt)
+	if err != nil {
+		fmt.Println(err)
+	}
+	defer stmt.Close()
+	_, err = stmt.Exec(e)
+	if err != nil {
+		fmt.Println(err)
+	}
+	err = tx.Commit()
+	if err != nil {
+		log.Fatal(err)
 	}
 	return nil
 }
 
 func (d *Database) ModifyEntry(e EntryRow) error {
 	// TODO: Could optimise to only update what is changed
-	sqlstmt := fmt.Sprintf(`Update worklog set desc = ?, 
-							hours = ?, 
-							projcode = ?, 
-							date = ?, 
-							starttime = ?, 
-							endtime = ? where id = ?;`)
+	sqlstmt := `Update worklog set desc = ?, 
+				hours = ?, 
+				projcode = ?, 
+				date = ?, 
+				starttime = ?, 
+				endtime = ? where id = ?;`
 	tx, err := d.db.Begin()
 	if err != nil {
 		fmt.Println(err)
@@ -134,7 +146,7 @@ func (d *Database) QueryEntry(e EntryRow) (EntryRow, error) {
 		err  error
 	)
 
-	rows, err = d.db.Query("select date, id, projcode, hours, desc, starttime, endtime from worklog where id = %d", e.entryId)
+	rows, _ = d.db.Query("select date, id, projcode, hours, desc, starttime, endtime from worklog where id = %d", e.entryId)
 	defer rows.Close()
 	var ent EntryRow
 	for rows.Next() {
@@ -210,7 +222,7 @@ func (e *EntryRow) FillData(inputs []textinput.Model) error {
 	timeFmt := "15:04"
 	dateFmt := "02/01/2006"
 	var err error
-	e.entry.hours, err = time.ParseDuration(inputs[hours].Value())
+	e.entry.hours, err = time.ParseDuration(inputs[hours].Value() + "01s")
 	if err != nil {
 		return fmt.Errorf("%s", err)
 	}

@@ -23,11 +23,12 @@ type model struct {
 	cursorMode    cursor.Mode       // which to-do items are selected
 	modRowID      int
 
-	list  list.Model
-	state ViewState
-	id    int // Last current query id
-	winH  int
-	winW  int
+	list       list.Model
+	state      ViewState
+	id         int // Last current query id
+	winH       int
+	winW       int
+	errBuilder string
 }
 
 type ListModel struct {
@@ -85,7 +86,7 @@ const (
 func initialModel() model {
 	m := model{
 		inputs:    make([]textinput.Model, submit),
-		modInputs: make([]textinput.Model, delete),
+		modInputs: make([]textinput.Model, submit),
 		list:      list.Model{},
 		state:     New,
 		id:        0,
@@ -134,8 +135,8 @@ func initialModel() model {
 
 		case hours:
 			t.Placeholder = "Hours (opt) HH:MM"
-			t.Validate = timeValidator
-			t.CharLimit = 5
+			t.Validate = durValidator
+			t.CharLimit = 6
 		}
 		m.inputs[i] = t
 	}
@@ -173,9 +174,9 @@ func initialModel() model {
 			t.CharLimit = 5
 
 		case hours:
-			t.Placeholder = "Hours (opt) HH:MM"
-			t.Validate = timeValidator
-			t.CharLimit = 5
+			t.Placeholder = "Hours (opt) XXhXXm"
+			t.Validate = durValidator
+			t.CharLimit = 6
 		}
 		m.modInputs[i] = t
 	}
@@ -197,6 +198,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.winH = msg.Height - v
 			m.winW = msg.Width - h
 			m.list.SetSize(m.winW, m.winH)
+			//fmt.Println("resize")
 
 		case tea.KeyMsg:
 			switch msg.String() {
@@ -225,7 +227,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.modInputs[startTime].SetValue(item.entry.startTime.String())
 				m.modInputs[endTime].SetValue(item.entry.endTime.String())
 				m.modInputs[hours].SetValue(item.entry.hours.String())
-
+				m.modRowID = item.entryId
 				m.state = Modify
 				return m, tea.Batch(cmds...)
 
@@ -268,11 +270,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				for _, v := range e {
 					m.list.InsertItem(99999, v)
-					fmt.Println(v.entryId)
+					//fmt.Println(v.entryId)
 				}
-
-				m.list.SetSize(m.winH, m.winH)
 				m.state = Get
+				//	fmt.Println(m.winW, m.winH)
+				m.list.SetSize(m.winW, m.winH)
 
 			case "ctrl+c", "esc":
 				return m, tea.Quit
@@ -286,8 +288,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if s == "enter" && m.focusIndex == len(m.inputs) {
 					entry := EntryRow{}
 					//Testing with local copy incase pointer edits data.
-					entry.FillData(m.inputs)
-					if err := db.SaveEntry(&entry); err != nil {
+					if err := entry.FillData(m.inputs); err != nil {
+						m.errBuilder = err.Error()
+						//fmt.Println(m.inputs[hours].Value(), err)
+						submitFailed = true
+						break
+					}
+					//fmt.Println(m.inputs[hours].Value() + "err")
+					if err := db.SaveEntry(entry); err != nil {
 						submitFailed = true
 					} else {
 						submitFailed = false
@@ -296,7 +304,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 
 				// Cycle indexes
-				if s == "up" || s == "shift+tab" {
+				if s == "up" || s == "left" {
 					m.focusIndex--
 				} else {
 					m.focusIndex++
@@ -338,21 +346,28 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch msg.String() {
 			case "ctrl+i": // Switch back to New entry screen.
 				m.state = New
-			case "tab":
-				items := []list.Item{}
 
-				m.list = list.New(items, list.NewDefaultDelegate(), 0, 0)
-				m.list.Title = "Worklog Entries"
-				m.id = 0
+			case "tab":
+				e, err := db.QueryEntries(&m)
+				if err != nil {
+					return m, nil
+				}
+				for _, v := range e {
+					m.list.InsertItem(99999, v)
+					//fmt.Println(v.entryId)
+				}
 				m.state = Get
+				//	fmt.Println(m.winW, m.winH)
+				m.list.SetSize(m.winW, m.winH)
 
 			case "enter", "up", "down", "left", "right":
 				s := msg.String()
-				if s == "enter" && m.modFocusIndex == len(m.modInputs)-1 {
+				if s == "enter" && m.modFocusIndex == len(m.modInputs) {
 					entry := EntryRow{}
 					//Testing with local copy incase pointer edits data.
 					if err := entry.FillData(m.modInputs); err != nil {
-						return m, nil
+						m.errBuilder = err.Error()
+						break
 					}
 					if err := db.ModifyEntry(entry); err != nil {
 						submitFailed = true
@@ -360,36 +375,39 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						submitFailed = false
 						m.resetState()
 					}
-				} else if s == "enter" && m.modFocusIndex == len(m.modInputs) {
-					entry := EntryRow{}
-					db.DeleteEntry(entry)
+				} else if s == "enter" && m.modFocusIndex == len(m.modInputs)+1 {
+					if err := db.DeleteEntry(m.modRowID); err != nil {
+						fmt.Println(err)
+					}
+					m.modRowID = 0
+					m.state = Get
 				}
 
 				// Cycle indexes
-				if s == "up" || s == "shift+tab" {
-					m.focusIndex--
+				if s == "up" || s == "left" {
+					m.modFocusIndex--
 				} else {
-					m.focusIndex++
+					m.modFocusIndex++
 				}
 
-				if m.focusIndex > len(m.inputs) {
-					m.focusIndex = 0
-				} else if m.focusIndex < 0 {
-					m.focusIndex = len(m.inputs)
+				if m.modFocusIndex > len(m.modInputs)+1 {
+					m.modFocusIndex = 0
+				} else if m.modFocusIndex < 0 {
+					m.modFocusIndex = len(m.modInputs) + 1
 				}
-				cmds := make([]tea.Cmd, len(m.inputs))
-				for i := 0; i <= len(m.inputs)-1; i++ {
-					if i == m.focusIndex {
+				cmds := make([]tea.Cmd, len(m.modInputs))
+				for i := 0; i <= len(m.modInputs)-1; i++ {
+					if i == m.modFocusIndex {
 						// Set focused state
-						cmds[i] = m.inputs[i].Focus()
-						m.inputs[i].PromptStyle = focusedStyle
-						m.inputs[i].TextStyle = focusedStyle
+						cmds[i] = m.modInputs[i].Focus()
+						m.modInputs[i].PromptStyle = focusedStyle
+						m.modInputs[i].TextStyle = focusedStyle
 						continue
 					}
 					// Remove focused state
-					m.inputs[i].Blur()
-					m.inputs[i].PromptStyle = noStyle
-					m.inputs[i].TextStyle = noStyle
+					m.modInputs[i].Blur()
+					m.modInputs[i].PromptStyle = noStyle
+					m.modInputs[i].TextStyle = noStyle
 				}
 				return m, tea.Batch(cmds...)
 			}
@@ -405,8 +423,14 @@ func (m *model) updateInputs(msg tea.Msg) tea.Cmd {
 
 	// Only text inputs with Focus() set will respond, so it's safe to simply
 	// update all of them here without any further logic.
-	for i := range m.inputs {
-		m.inputs[i], cmds[i] = m.inputs[i].Update(msg)
+	if m.state == New {
+		for i := range m.inputs {
+			m.inputs[i], cmds[i] = m.inputs[i].Update(msg)
+		}
+	} else if m.state == Modify {
+		for i := range m.modInputs {
+			m.modInputs[i], cmds[i] = m.modInputs[i].Update(msg)
+		}
 	}
 
 	return tea.Batch(cmds...)
@@ -448,19 +472,17 @@ func (m model) View() string {
 			button = focusSave
 		}
 		button2 := blurDelete
-		if m.modFocusIndex == len(m.modInputs) {
-			button = focusDelete
+		if m.modFocusIndex == len(m.modInputs)+1 {
+			button2 = focusDelete
 		}
 		fmt.Fprintf(&b, "\n\n%s\t\t%s\n\n", button, button2)
 
 	}
 	if submitFailed {
-		b.WriteString(helpStyle.Render("Please fix input issues and try again"))
+		b.WriteString(m.errBuilder)
 	} else {
-		b.WriteString(helpStyle.Render("cursor mode is "))
+		b.WriteString(helpStyle.Render(fmt.Sprintf("mod idx: %d idx: %d", m.modFocusIndex, m.focusIndex)))
 	}
-	b.WriteString(cursorModeHelpStyle.Render(m.cursorMode.String()))
-	b.WriteString(helpStyle.Render(" (ctrl+r to change style)"))
 
 	return docStyle.Render(b.String())
 }
@@ -549,6 +571,29 @@ func timeValidator(s string) error {
 	if len(s) == 5 {
 		if mm, err := strconv.Atoi(s[3:5]); err != nil || mm < 0 || mm > 59 {
 			return fmt.Errorf("hour format incorrect")
+		}
+	}
+	return nil
+}
+
+func durValidator(s string) error {
+	if len(s) > 6 {
+		return fmt.Errorf("dur length incorrect")
+	}
+	if len(s) == 3 {
+		if strings.Index(s, "h") != 2 {
+			return fmt.Errorf("dur invalid")
+		}
+		if hh, err := strconv.Atoi(s[:2]); err != nil || hh < 0 || hh > 23 {
+			return fmt.Errorf("hour format incorrect")
+		}
+	}
+	if len(s) == 6 {
+		if strings.Index(s, "m") != 5 {
+			return fmt.Errorf("dur invalid")
+		}
+		if mm, err := strconv.Atoi(s[3:5]); err != nil || mm < 0 || mm > 59 {
+			return fmt.Errorf("min format incorrect")
 		}
 	}
 	return nil
