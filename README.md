@@ -14,3 +14,33 @@ It is a local based versions with a local database (sqlite)
 ### Known Bugs
 - If deleting an entry list will not update until navigating away and back
 - If adding an entry
+- ~~Fix formatting limitations for hours field.~~
+- fix bug with infinite scroll and more than 10 items in db.
+- ~~Add save functionality for modify entry.~~ 
+- Add ability to switch filter item (proj, desc).
+- ~~Fix issue of modify values carrying over to next modify input.~~
+- ~~Look into issue with list and new page showing stale info.~~
+- Create a summary view that will make it easy to copy entries to scoro.
+- Summary view will either be a list of the weeks entries, or whatever is currently in the get list. Probably the week. 
+- ~~Make summary view ~~
+- Format Summary view nicely
+- Allow importing and exporting of worklog txt file for storage and seeding.
+
+
+# How to use the worklog
+
+## Summary View
+### How to enter summary view?
+Press ctrl + h to enter summary view. 
+
+## Modify View
+### How to enter modify view?
+Press enter on an item in the list view. 
+
+## List View
+### How to enter list view?
+Tab from New or Modify view to get to the list view.
+
+## New View 
+### How to enter new view?
+Default view when the app starts
