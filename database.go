@@ -107,6 +107,41 @@ func (d *Database) ModifyEntry(e EntryRow) error {
 	return nil
 }
 
+func (d *Database) QuerySummary(m *model) ([]EntryRow, error) {
+	// Use this to get a summary of the past week of entries
+	// Or get a summary of the
+	// Potentially later modify the time length being requested.
+	var (
+		rows *sql.Rows
+		err  error
+		ents []EntryRow
+	)
+	//fmt.Println(m.currentDate.String())
+	startDate := m.currentDate.AddDate(0, 0, 1).Format("2006-01-02")
+	endDate := m.currentDate.AddDate(0, 0, -7).Format("2006-01-02")
+	//fmt.Println(fmt.Sprintf("select date, id, projcode, hours, desc from worklog where date between date(%s) and date(%s)", startDate, endDate))
+
+	rows, err = d.db.Query("select date, id, projcode, hours, desc from worklog where date between date(?) and date(?) order by date desc", endDate, startDate)
+	if err != nil {
+		return []EntryRow{}, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		ent := EntryRow{}
+		err = rows.Scan(&ent.entry.date, &ent.entryId, &ent.entry.projCode, &ent.entry.hours, &ent.entry.desc)
+		if err != nil {
+			return []EntryRow{}, err
+		}
+		//fmt.Println(ent.entryId, ent.entry.projCode)
+		ents = append(ents, ent)
+	}
+	err = rows.Err()
+	if err != nil {
+		return []EntryRow{}, err
+	}
+	return ents, nil
+}
+
 func (d *Database) QueryEntries(m *model) ([]EntryRow, error) {
 	var (
 		rows *sql.Rows

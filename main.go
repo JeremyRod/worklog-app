@@ -10,32 +10,69 @@ import (
 	"github.com/charmbracelet/bubbles/cursor"
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	_ "github.com/mattn/go-sqlite3"
 )
 
+const useHighPerformanceRenderer = false
+
 type model struct {
-	inputs        []textinput.Model // items on the to-do list
-	focusIndex    int               // which to-do list item our cursor is pointing at
+	// New inputs
+	inputs     []textinput.Model // items on the to-do list
+	focusIndex int               // which to-do list item our cursor is pointing at
+
+	// Modify inputs
 	modInputs     []textinput.Model // items for the modify list, same as the new list.
 	modFocusIndex int               // Focus index for Modify List
-	cursorMode    cursor.Mode       // which to-do items are selected
 	modRowID      int
+	currentDate   time.Time // Date to get entries from
+	// Summary View
+	sumContent string
+	viewport   viewport.Model
+	ready      bool
 
+	// List view
 	list       list.Model
-	state      ViewState
-	id         int // Last current query id
-	winH       int
-	winW       int
+	id         int         // Last current query id
+	cursorMode cursor.Mode // which to-do items are selected
+
+	// Track app state for view rendering
+	state ViewState
+
+	// Maintain current window size in model for list rerendering.
+	winH int
+	winW int
+
+	// Track error messages in string builder and print in view
 	errBuilder string
 }
 
-type ListModel struct {
-	list list.Model
+var (
+	titleStyle = func() lipgloss.Style {
+		b := lipgloss.RoundedBorder()
+		b.Right = "├"
+		return lipgloss.NewStyle().BorderStyle(b).Padding(0, 1)
+	}()
+
+	infoStyle = func() lipgloss.Style {
+		b := lipgloss.RoundedBorder()
+		b.Left = "┤"
+		return titleStyle.BorderStyle(b)
+	}()
+)
+
+func (m model) headerView() string {
+	title := titleStyle.Render("Summary View")
+	line := strings.Repeat("─", max(0, m.viewport.Width-lipgloss.Width(title)))
+	return lipgloss.JoinHorizontal(lipgloss.Center, title, line)
 }
 
-type AddModel struct {
+func (m model) footerView() string {
+	info := infoStyle.Render(fmt.Sprintf("%3.f%%", m.viewport.ScrollPercent()*100))
+	line := strings.Repeat("─", max(0, m.viewport.Width-lipgloss.Width(info)))
+	return lipgloss.JoinHorizontal(lipgloss.Center, line, info)
 }
 
 var (
@@ -81,15 +118,17 @@ const (
 	New ViewState = iota
 	Get
 	Modify
+	Summary
 )
 
 func initialModel() model {
 	m := model{
-		inputs:    make([]textinput.Model, submit),
-		modInputs: make([]textinput.Model, submit),
-		list:      list.Model{},
-		state:     New,
-		id:        0,
+		inputs:      make([]textinput.Model, submit),
+		modInputs:   make([]textinput.Model, submit),
+		list:        list.Model{},
+		state:       New,
+		id:          0,
+		currentDate: time.Now(),
 	}
 
 	var t textinput.Model
@@ -191,6 +230,7 @@ func (m model) Init() tea.Cmd {
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
+	var cmds []tea.Cmd
 	if m.state == Get {
 		switch msg := msg.(type) {
 		case tea.WindowSizeMsg:
@@ -203,9 +243,54 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case tea.KeyMsg:
 			switch msg.String() {
 
+			case "ctrl+p":
+				ents, err := db.QuerySummary(&m)
+				//fmt.Println(ents)
+				if err != nil {
+					m.errBuilder = err.Error()
+					return m, nil
+				}
+				for i := range ents {
+					m.sumContent += fmt.Sprintf("%s\n%s\n\n", ents[i].Title(), ents[i].Description())
+				}
+				headerHeight := lipgloss.Height(m.headerView())
+				footerHeight := lipgloss.Height(m.footerView())
+				verticalMarginHeight := headerHeight + footerHeight
+
+				m.viewport = viewport.New(m.winW, m.winH-verticalMarginHeight)
+				m.viewport.YPosition = headerHeight
+				m.viewport.HighPerformanceRendering = useHighPerformanceRenderer
+				m.viewport.SetContent(m.sumContent)
+				m.ready = true
+				m.viewport.YPosition = headerHeight + 1
+
+				if useHighPerformanceRenderer {
+					// Render (or re-render) the whole viewport. Necessary both to
+					// initialize the viewport and when the window is resized.
+					//
+					// This is needed for high-performance rendering only.
+					cmds = append(cmds, viewport.Sync(m.viewport))
+				}
+				m.state = Summary
+				return m, tea.Batch(cmds...)
+
+			case "delete":
+				items := m.list.Items()
+				item := items[m.list.Index()].(EntryRow)
+				if err := db.DeleteEntry(item.entryId); err != nil {
+					fmt.Println(err)
+				}
+				m.modRowID = 0
+				m.id = 0
+				items = []list.Item{}
+				m.list = list.New(items, list.NewDefaultDelegate(), 0, 0)
+				m.list.Title = "Worklog Entries"
+				m.ListUpdate()
+				m.state = Get
+
 			case "enter":
 				items := m.list.Items()
-				item := items[m.list.Cursor()].(EntryRow)
+				item := items[m.list.Index()].(EntryRow)
 
 				cmds := make([]tea.Cmd, len(m.modInputs))
 				for i := 0; i <= len(m.modInputs)-1; i++ {
@@ -251,6 +336,61 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		m.list, cmd = m.list.Update(msg)
+	} else if m.state == Summary {
+		var (
+			cmd  tea.Cmd
+			cmds []tea.Cmd
+		)
+		switch msg := msg.(type) {
+		case tea.KeyMsg:
+			switch msg.String() {
+			case "ctrl+c", "q", "esc":
+				return m, tea.Quit
+
+			case "tab":
+				m.sumContent = ""
+				m.viewport.SetContent(m.sumContent)
+				m.ListUpdate()
+			}
+
+		case tea.WindowSizeMsg:
+			headerHeight := lipgloss.Height(m.headerView())
+			footerHeight := lipgloss.Height(m.footerView())
+			verticalMarginHeight := headerHeight + footerHeight
+
+			// if !m.ready {
+			// Since this program is using the full size of the viewport we
+			// need to wait until we've received the window dimensions before
+			// we can initialize the viewport. The initial dimensions come in
+			// quickly, though asynchronously, which is why we wait for them
+			// here.
+			m.viewport = viewport.New(m.winW, m.winH-verticalMarginHeight)
+			m.viewport.YPosition = headerHeight
+			m.viewport.HighPerformanceRendering = useHighPerformanceRenderer
+			m.viewport.SetContent(m.sumContent)
+			m.ready = true
+
+			// This is only necessary for high performance rendering, which in
+			// most cases you won't need.
+			//
+			// Render the viewport one line below the header.
+			m.viewport.YPosition = headerHeight + 1
+
+			if useHighPerformanceRenderer {
+				// Render (or re-render) the whole viewport. Necessary both to
+				// initialize the viewport and when the window is resized.
+				//
+				// This is needed for high-performance rendering only.
+				cmds = append(cmds, viewport.Sync(m.viewport))
+			}
+		}
+
+		// Handle keyboard and mouse events in the viewport
+		m.viewport, cmd = m.viewport.Update(msg)
+		cmds = append(cmds, cmd)
+
+		return m, tea.Batch(cmds...)
+
 	} else if m.state == New {
 		switch msg := msg.(type) {
 
@@ -477,11 +617,17 @@ func (m model) View() string {
 		}
 		fmt.Fprintf(&b, "\n\n%s\t\t%s\n\n", button, button2)
 
+	case Summary:
+		// if !m.ready {
+		// 	b.WriteString("\n  Initializing...")
+		// } else {
+		fmt.Fprintf(&b, "\n%s\n%s\n%s", m.headerView(), m.viewport.View(), m.footerView()) //, m.footerView())
+		//}
 	}
 	if submitFailed {
-		b.WriteString(m.errBuilder)
+		b.WriteString(helpStyle.Render(m.errBuilder))
 	} else {
-		b.WriteString(helpStyle.Render(fmt.Sprintf("mod idx: %d idx: %d", m.modFocusIndex, m.focusIndex)))
+		b.WriteString(helpStyle.Render(fmt.Sprintf("\n list cur idx: %d list len: %d last id: %d", m.list.Index(), len(m.list.Items()), m.id)))
 	}
 
 	return docStyle.Render(b.String())
