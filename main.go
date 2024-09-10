@@ -745,10 +745,10 @@ func durValidator(s string) error {
 		return fmt.Errorf("dur length incorrect")
 	}
 	if len(s) == 3 {
-		if strings.Index(s, "h") != 2 {
+		if strings.Index(s, "h") != 2 && strings.Index(s, "m") != 2 {
 			return fmt.Errorf("dur invalid")
 		}
-		if hh, err := strconv.Atoi(s[:2]); err != nil || hh < 0 || hh > 23 {
+		if _, err := strconv.Atoi(s[:2]); err != nil {
 			return fmt.Errorf("hour format incorrect")
 		}
 	}
@@ -756,9 +756,16 @@ func durValidator(s string) error {
 		if strings.Index(s, "m") != 5 {
 			return fmt.Errorf("dur invalid")
 		}
-		if mm, err := strconv.Atoi(s[3:5]); err != nil || mm < 0 || mm > 59 {
+		if _, err := strconv.Atoi(s[3:5]); err != nil {
 			return fmt.Errorf("min format incorrect")
 		}
 	}
 	return nil
+}
+
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }
