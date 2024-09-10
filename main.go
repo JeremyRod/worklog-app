@@ -306,12 +306,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.modInputs[i].PromptStyle = noStyle
 					m.modInputs[i].TextStyle = noStyle
 				}
-				m.modInputs[date].SetValue(item.entry.date.String())
+				m.modInputs[date].SetValue(item.entry.date.Format("02/01/2006"))
 				m.modInputs[code].SetValue(item.entry.projCode)
 				m.modInputs[desc].SetValue(item.entry.desc)
 				m.modInputs[startTime].SetValue(item.entry.startTime.String())
 				m.modInputs[endTime].SetValue(item.entry.endTime.String())
-				m.modInputs[hours].SetValue(item.entry.hours.String())
+				m.modInputs[hours].SetValue(item.entry.hours.String()[:len(item.entry.hours.String())-2])
 				m.modRowID = item.entryId
 				m.state = Modify
 				return m, tea.Batch(cmds...)
@@ -324,9 +324,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.id = 0
 				m.state = New
 			}
-
 		}
-		if m.list.Cursor() == len(m.list.Items())-1 {
+		if m.list.Index() == len(m.list.Items())-1 && m.id != 1 {
 			e, err := db.QueryEntries(&m)
 			if err != nil {
 				return m, nil
@@ -404,17 +403,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch msg.String() {
 
 			case "tab":
-				e, err := db.QueryEntries(&m)
-				if err != nil {
-					return m, nil
-				}
-				for _, v := range e {
-					m.list.InsertItem(99999, v)
-					//fmt.Println(v.entryId)
-				}
-				m.state = Get
-				//	fmt.Println(m.winW, m.winH)
-				m.list.SetSize(m.winW, m.winH)
+				m.ListUpdate()
 
 			case "ctrl+c", "esc":
 				return m, tea.Quit
@@ -488,17 +477,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.state = New
 
 			case "tab":
-				e, err := db.QueryEntries(&m)
-				if err != nil {
-					return m, nil
-				}
-				for _, v := range e {
-					m.list.InsertItem(99999, v)
-					//fmt.Println(v.entryId)
-				}
-				m.state = Get
-				//	fmt.Println(m.winW, m.winH)
-				m.list.SetSize(m.winW, m.winH)
+				m.resetModState()
+				m.ListUpdate()
+
+				// e, err := db.QueryEntries(&m)
+				// if err != nil {
+				// 	return m, nil
+				// }
+				// for _, v := range e {
+				// 	m.list.InsertItem(99999, v)
+				// 	//fmt.Println(v.entryId)
+				// }
+				// m.state = Get
+				// //	fmt.Println(m.winW, m.winH)
+				// m.list.SetSize(m.winW, m.winH)
 
 			case "enter", "up", "down", "left", "right":
 				s := msg.String()
@@ -507,14 +499,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					//Testing with local copy incase pointer edits data.
 					if err := entry.FillData(m.modInputs); err != nil {
 						m.errBuilder = err.Error()
+						submitFailed = true
 						break
 					}
+					entry.entryId = m.modRowID
 					if err := db.ModifyEntry(entry); err != nil {
 						submitFailed = true
-					} else {
-						submitFailed = false
-						m.resetState()
 					}
+					m.modRowID = 0
+					m.state = Get
 				} else if s == "enter" && m.modFocusIndex == len(m.modInputs)+1 {
 					if err := db.DeleteEntry(m.modRowID); err != nil {
 						fmt.Println(err)
@@ -594,6 +587,9 @@ func (m model) View() string {
 		fmt.Fprintf(&b, "\n\n%s\n\n", *button)
 
 	case Get:
+		// if err := m.ListUpdate(); err != nil {
+		// 	b.WriteString(fmt.Sprintf("%v", err))
+		// }
 		_, err := b.WriteString(docStyle.Render(m.list.View()))
 		if err != nil {
 			b.WriteString(fmt.Sprintf("%v", err))
@@ -643,6 +639,13 @@ func (m *model) resetState() {
 	m.inputs[endTime].SetValue(fmt.Sprintf("%v", t.Format("15:04")))
 }
 
+func (m *model) resetModState() {
+	//fmt.Println(m.inputs[hours].Value())
+	for v := range m.inputs {
+		m.modInputs[v].Reset()
+	}
+}
+
 var db Database = Database{db: nil}
 
 func main() {
@@ -668,6 +671,21 @@ func main() {
 		os.Exit(1)
 	}
 	db.CloseDatabase()
+}
+
+func (m *model) ListUpdate() error {
+	e, err := db.QueryEntries(m)
+	if err != nil {
+		return fmt.Errorf("%s", err)
+	}
+	for _, v := range e {
+		m.list.InsertItem(99999, v)
+		//fmt.Println(v.entryId)
+	}
+	m.state = Get
+	//	fmt.Println(m.winW, m.winH)
+	m.list.SetSize(m.winW, m.winH)
+	return nil
 }
 
 func dateValidator(s string) error {
