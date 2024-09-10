@@ -45,7 +45,7 @@ var (
 	noStyle                  = lipgloss.NewStyle()
 	helpStyle                = blurredStyle
 	cursorModeHelpStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
-	docStyle                 = lipgloss.NewStyle().Margin(2, 2)
+	docStyle                 = lipgloss.NewStyle().Margin(2, 2, 0, 2)
 	focusedButton            = focusedStyle.Render("[ Submit ]")
 	blurredButton            = fmt.Sprintf("[ %s ]", blurredStyle.Render("Submit"))
 	focusDelete              = focusedStyle.Render("[ Delete ]")
@@ -516,7 +516,7 @@ func main() {
 	// 	fmt.Println(err)
 	// }
 
-	p := tea.NewProgram(initialModel())
+	p := tea.NewProgram(initialModel(), tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Printf("Alas, there's been an error: %v", err)
 		os.Exit(1)
