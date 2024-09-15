@@ -16,18 +16,20 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-const useHighPerformanceRenderer = false
+var useHighPerformanceRenderer = false
 
 type model struct {
 	// New inputs
 	inputs     []textinput.Model // items on the to-do list
 	focusIndex int               // which to-do list item our cursor is pointing at
+	inputsPos  []int             //array to track cursor pos for each input
 
 	// Modify inputs
 	modInputs     []textinput.Model // items for the modify list, same as the new list.
 	modFocusIndex int               // Focus index for Modify List
 	modRowID      int
 	currentDate   time.Time // Date to get entries from
+
 	// Summary View
 	sumContent string
 	viewport   viewport.Model
@@ -84,11 +86,13 @@ var (
 	cursorModeHelpStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
 	docStyle                 = lipgloss.NewStyle().Margin(2, 2, 0, 2)
 	focusedButton            = focusedStyle.Render("[ Submit ]")
-	blurredButton            = fmt.Sprintf("[ %s ]", blurredStyle.Render("Submit"))
+	blurredButton            = blurredStyle.Render("[ Submit ]")
 	focusDelete              = focusedStyle.Render("[ Delete ]")
 	blurDelete               = blurredStyle.Render("[ Delete ]")
 	focusSave                = focusedStyle.Render("[ Save ]")
 	blurSave                 = blurredStyle.Render("[ Save ]")
+	focusImport              = focusedStyle.Render("[ Import ]")
+	blurImport               = blurredStyle.Render("[ Import ]")
 	submitFailed        bool = false
 )
 
@@ -110,6 +114,7 @@ const (
 	hours
 	submit
 	delete
+	imp
 )
 
 type ViewState int
@@ -125,6 +130,7 @@ func initialModel() model {
 	m := model{
 		inputs:      make([]textinput.Model, submit),
 		modInputs:   make([]textinput.Model, submit),
+		inputsPos:   make([]int, submit),
 		list:        list.Model{},
 		state:       New,
 		id:          0,
@@ -251,8 +257,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 				for i := range ents {
-					m.sumContent += fmt.Sprintf("%s\n%s\n\n", ents[i].Title(), ents[i].Description())
+					m.sumContent += fmt.Sprintf("%s\n%s\n", ents[i].Title(), ents[i].Description())
 				}
+
 				headerHeight := lipgloss.Height(m.headerView())
 				footerHeight := lipgloss.Height(m.footerView())
 				verticalMarginHeight := headerHeight + footerHeight
@@ -275,18 +282,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Batch(cmds...)
 
 			case "delete":
-				items := m.list.Items()
-				item := items[m.list.Index()].(EntryRow)
-				if err := db.DeleteEntry(item.entryId); err != nil {
-					fmt.Println(err)
+				if items := m.list.Items(); len(items) != 0 {
+					item := items[m.list.Index()].(EntryRow)
+					if err := db.DeleteEntry(item.entryId); err != nil {
+						fmt.Println(err)
+					}
+					m.modRowID = 0
+					m.id = 0
+					items = []list.Item{}
+					m.list = list.New(items, list.NewDefaultDelegate(), 0, 0)
+					m.list.Title = "Worklog Entries"
+					m.ListUpdate()
+					m.state = Get
 				}
-				m.modRowID = 0
-				m.id = 0
-				items = []list.Item{}
-				m.list = list.New(items, list.NewDefaultDelegate(), 0, 0)
-				m.list.Title = "Worklog Entries"
-				m.ListUpdate()
-				m.state = Get
 
 			case "enter":
 				items := m.list.Items()
@@ -356,6 +364,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			headerHeight := lipgloss.Height(m.headerView())
 			footerHeight := lipgloss.Height(m.footerView())
 			verticalMarginHeight := headerHeight + footerHeight
+			useHighPerformanceRenderer = true
 
 			// if !m.ready {
 			// Since this program is using the full size of the viewport we
@@ -419,30 +428,49 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					//Testing with local copy incase pointer edits data.
 					if err := entry.FillData(m.inputs); err != nil {
 						m.errBuilder = err.Error()
-						//fmt.Println(m.inputs[hours].Value(), err)
 						submitFailed = true
 						break
 					}
-					//fmt.Println(m.inputs[hours].Value() + "err")
 					if err := db.SaveEntry(entry); err != nil {
 						submitFailed = true
 					} else {
 						submitFailed = false
 						m.resetState()
 					}
+				} else if s == "enter" && m.focusIndex == len(m.inputs)+1 {
+					err := ImportWorklog()
+					if err != nil {
+						submitFailed = true
+						m.errBuilder = err.Error()
+					}
+				}
+
+				// Cycle cursor position in input
+				if m.focusIndex <= len(m.inputs)-1 && s == "right" {
+					m.inputsPos[m.focusIndex] += 1
+					if m.inputsPos[m.focusIndex] < 0 {
+						m.inputsPos[m.focusIndex] = 0
+					}
+					m.inputs[m.focusIndex].SetCursor(m.inputsPos[m.focusIndex])
+				} else if m.focusIndex <= len(m.inputs)-1 && s == "left" {
+					m.inputsPos[m.focusIndex] -= 1
+					if m.inputsPos[m.focusIndex] > len(m.inputs[m.focusIndex].Value()) {
+						m.inputsPos[m.focusIndex] = len(m.inputs[m.focusIndex].Value()) - 1
+					}
+					m.inputs[m.focusIndex].SetCursor(m.inputsPos[m.focusIndex])
 				}
 
 				// Cycle indexes
-				if s == "up" || s == "left" {
+				if s == "up" {
 					m.focusIndex--
-				} else {
+				} else if s == "down" {
 					m.focusIndex++
 				}
 
-				if m.focusIndex > len(m.inputs) {
+				if m.focusIndex > len(m.inputs)+1 {
 					m.focusIndex = 0
 				} else if m.focusIndex < 0 {
-					m.focusIndex = len(m.inputs)
+					m.focusIndex = len(m.inputs) + 1
 				}
 
 				cmds := make([]tea.Cmd, len(m.inputs))
@@ -479,18 +507,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "tab":
 				m.resetModState()
 				m.ListUpdate()
-
-				// e, err := db.QueryEntries(&m)
-				// if err != nil {
-				// 	return m, nil
-				// }
-				// for _, v := range e {
-				// 	m.list.InsertItem(99999, v)
-				// 	//fmt.Println(v.entryId)
-				// }
-				// m.state = Get
-				// //	fmt.Println(m.winW, m.winH)
-				// m.list.SetSize(m.winW, m.winH)
 
 			case "enter", "up", "down", "left", "right":
 				s := msg.String()
@@ -547,7 +563,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		cmd = m.updateInputs(msg)
 	}
-
 	return m, cmd
 }
 
@@ -573,6 +588,7 @@ func (m model) View() string {
 	var b strings.Builder
 	switch m.state {
 	case New:
+		useHighPerformanceRenderer = false
 		for i := range m.inputs {
 			b.WriteString(m.inputs[i].View())
 			if i < len(m.inputs)-1 {
@@ -580,13 +596,18 @@ func (m model) View() string {
 			}
 		}
 
-		button := &blurredButton
-		if m.focusIndex == len(m.inputs) {
-			button = &focusedButton
+		button := blurImport
+		if m.focusIndex == len(m.inputs)+1 {
+			button = focusImport
 		}
-		fmt.Fprintf(&b, "\n\n%s\n\n", *button)
+		button2 := blurredButton
+		if m.focusIndex == len(m.inputs) {
+			button2 = focusedButton
+		}
+		fmt.Fprintf(&b, "\n\n%s\t\t%s\n\n", button2, button)
 
 	case Get:
+		useHighPerformanceRenderer = false
 		// if err := m.ListUpdate(); err != nil {
 		// 	b.WriteString(fmt.Sprintf("%v", err))
 		// }
@@ -596,6 +617,7 @@ func (m model) View() string {
 		}
 
 	case Modify:
+		useHighPerformanceRenderer = false
 		for i := range m.modInputs {
 			b.WriteString(m.modInputs[i].View())
 			if i < len(m.modInputs)-1 {
@@ -623,8 +645,9 @@ func (m model) View() string {
 	if submitFailed {
 		b.WriteString(helpStyle.Render(m.errBuilder))
 	} else {
-		b.WriteString(helpStyle.Render(fmt.Sprintf("\n list cur idx: %d list len: %d last id: %d", m.list.Index(), len(m.list.Items()), m.id)))
+		b.WriteString(helpStyle.Render(fmt.Sprintf("\n list cur idx: %d list len: %d last id: %d focus idx: %d", m.list.Index(), len(m.list.Items()), m.id, m.focusIndex)))
 	}
+	submitFailed = false
 
 	return docStyle.Render(b.String())
 }
@@ -637,6 +660,8 @@ func (m *model) resetState() {
 	}
 	m.inputs[date].SetValue(fmt.Sprintf("%v", t.Format("02/01/2006")))
 	m.inputs[endTime].SetValue(fmt.Sprintf("%v", t.Format("15:04")))
+	m.inputsPos[date] = len(m.inputs[date].Value())
+	m.inputsPos[endTime] = len(m.inputs[endTime].Value())
 }
 
 func (m *model) resetModState() {
