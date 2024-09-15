@@ -20,12 +20,16 @@ It is a local based versions with a local database (sqlite)
 - Add ability to switch filter item (proj, desc).
 - ~~Fix issue of modify values carrying over to next modify input.~~
 - ~~Look into issue with list and new page showing stale info.~~
-- Create a summary view that will make it easy to copy entries to scoro.
+- ~~Create a summary view that will make it easy to copy entries to scoro.~~
 - Summary view will either be a list of the weeks entries, or whatever is currently in the get list. Probably the week. 
 - ~~Make summary view ~~
 - Format Summary view nicely
-- Allow importing and exporting of worklog txt file for storage and seeding.
-
+- ~~Allow importing and exporting of worklog txt file for storage and seeding.~~
+    - ~~Currently only looks for files that have the same syntax as old worklog script.~~
+    - Improvement to above would be a file picker
+- Allow export of entries in data base to text file.
+    - Same format as old worklog for compatibility.
+-
 
 # How to use the worklog
 
