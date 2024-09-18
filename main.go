@@ -438,10 +438,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.resetState()
 					}
 				} else if s == "enter" && m.focusIndex == len(m.inputs)+1 {
-					err := ImportWorklog()
+					line, err := ImportWorklog()
 					if err != nil {
 						submitFailed = true
-						m.errBuilder = err.Error()
+						m.errBuilder = err.Error() + " " + strconv.Itoa(line)
 					}
 				}
 
@@ -683,18 +683,20 @@ func main() {
 			fmt.Printf("err: %v", err)
 		}
 	}
-	// if err := db.SaveEntry(&row2); err != nil {
-	// 	fmt.Println(err)
-	// }
-	// if err := db.DeleteEntry(&row); err != nil {
-	// 	fmt.Println(err)
-	// }
+	//if err := db.SaveEntry(&row2); err != nil {
+	//	fmt.Println(err)
+	//}
+	//if err := db.DeleteEntry(&row); err != nil {
+	//	fmt.Println(err)
+	//}
 
 	p := tea.NewProgram(initialModel(), tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Printf("Alas, there's been an error: %v", err)
 		os.Exit(1)
 	}
+	//_, err := ImportWorklog()
+	//fmt.Println(err)
 	db.CloseDatabase()
 }
 
