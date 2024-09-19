@@ -260,8 +260,8 @@ func (e *EntryRow) FillData(inputs []textinput.Model) error {
 	timeFmt := "15:04"
 	dateFmt := "02/01/2006"
 	var err error
-	e.entry.hours, err = time.ParseDuration(inputs[hours].Value() + "01s")
-	if err != nil {
+	e.entry.hours, err = time.ParseDuration(inputs[hours].Value())
+	if err != nil && inputs[hours].Value() != "" {
 		return fmt.Errorf("%s", err)
 	}
 	e.entry.startTime, err = time.Parse(timeFmt, inputs[startTime].Value())
@@ -278,8 +278,14 @@ func (e *EntryRow) FillData(inputs []textinput.Model) error {
 	}
 	e.entry.projCode = inputs[code].Value()
 	e.entry.desc = inputs[desc].Value()
-	if e.entry.hours == 0 {
+
+	if !e.entry.startTime.IsZero() && !e.entry.endTime.IsZero() {
 		e.entry.hours = time.Duration(e.entry.endTime.Sub(e.entry.startTime))
+	}
+
+	// Now do some validation checks on projcode and hours to make sure they exist.
+	if e.entry.hours == 0 || e.entry.projCode == "" {
+		return fmt.Errorf("empty hours or projcode, please check inputs")
 	}
 	return nil
 }
