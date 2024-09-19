@@ -258,7 +258,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 				for i := range ents {
-					m.sumContent += fmt.Sprintf("%s\n%s\n", ents[i].Title(), ents[i].Description())
+					m.sumContent += fmt.Sprintf("%s%s\n", ents[i].Title(), ents[i].Description())
+					m.sumContent += fmt.Sprintln("   ")
 				}
 
 				headerHeight := lipgloss.Height(m.headerView())
