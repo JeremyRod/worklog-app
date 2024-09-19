@@ -166,6 +166,9 @@ func (d *Database) QueryEntries(m *model) ([]EntryRow, error) {
 		}
 		//fmt.Println(ent.entryId, ent.entry.projCode)
 		ents = append(ents, ent)
+		if m.id == 0 {
+			m.maxId = ent.entryId
+		}
 		m.id = ent.entryId
 	}
 	err = rows.Err()
