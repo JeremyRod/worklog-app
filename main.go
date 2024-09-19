@@ -38,6 +38,7 @@ type model struct {
 	// List view
 	list       list.Model
 	id         int         // Last current query id
+	maxId      int         // For offset tracking
 	cursorMode cursor.Mode // which to-do items are selected
 
 	// Track app state for view rendering
