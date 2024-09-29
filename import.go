@@ -32,12 +32,17 @@ func ImportWorklog() (int, error) {
 		}
 		lineNum++
 		strBytes := []byte(str)
-		// fmt.Println(str)
-		// fmt.Println(strBytes)
+		fmt.Println(strBytes)
 		str = strings.Replace(str, "\r\n", "", -1)
 		str = strings.Replace(str, "\t", "", -1)
-		// fmt.Println(str)
-		// fmt.Println(len(str)
+		if strBytes[0] == ' ' || strBytes[1] == ' ' {
+			var found bool
+			str, found = strings.CutPrefix(str, " \t")
+			if !found {
+				str, _ = strings.CutPrefix(str, "\t ")
+			}
+		}
+
 		if strBytes[0] == '\r' && strBytes[1] == '\n' {
 			// Shows a new empty line.
 		} else if strBytes[0] == '\t' && strBytes[1] == '\t' {
@@ -68,9 +73,6 @@ func ImportWorklog() (int, error) {
 			}
 			// Start new entry
 			e.entry.desc = ""
-			//fmt.Println(len(strArr))
-			//fmt.Println(strArr)
-			// fmt.Println(strArr[0])
 			e.entry.projCode = strArr[1]
 			e.entry.startTime, err = time.Parse("15:04", strings.Trim(strArr[0], "\t"))
 			if err != nil {
@@ -81,6 +83,8 @@ func ImportWorklog() (int, error) {
 			// None indented are new dates.
 			// If we hit a new date, the last potential entry should probably just be cleared.
 			e = EntryRow{}
+			//  There should be no spaces on this line, stripping will some some common errors.
+			str = strings.Replace(str, " ", "", -1)
 			e.entry.date, err = time.Parse("2006-01-02", str)
 			if err != nil {
 				return lineNum, fmt.Errorf("date parse fail")
