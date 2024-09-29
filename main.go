@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -678,13 +677,13 @@ var db Database = Database{db: nil}
 func main() {
 
 	// row2 := EntryRow{entry: Entry{hours: 3.1, projCode: "EOS", desc: "hih"}, entryId: 100}
-	if err := db.OpenDatabase(); err != nil {
-		fmt.Println(err)
-		err = db.CreateDatabase()
-		if err != nil {
-			fmt.Printf("err: %v", err)
-		}
-	}
+	// if err := db.OpenDatabase(); err != nil {
+	// 	fmt.Println(err)
+	// 	err = db.CreateDatabase()
+	// 	if err != nil {
+	// 		fmt.Printf("err: %v", err)
+	// 	}
+	// }
 	//if err := db.SaveEntry(&row2); err != nil {
 	//	fmt.Println(err)
 	//}
@@ -692,14 +691,16 @@ func main() {
 	//	fmt.Println(err)
 	//}
 
-	p := tea.NewProgram(initialModel(), tea.WithAltScreen())
-	if _, err := p.Run(); err != nil {
-		fmt.Printf("Alas, there's been an error: %v", err)
-		os.Exit(1)
-	}
-	//_, err := ImportWorklog()
-	//fmt.Println(err)
-	db.CloseDatabase()
+	// p := tea.NewProgram(initialModel(), tea.WithAltScreen())
+	// if _, err := p.Run(); err != nil {
+	// 	fmt.Printf("Alas, there's been an error: %v", err)
+	// 	os.Exit(1)
+	// }
+	// //_, err := ImportWorklog()
+	// //fmt.Println(err)
+	// db.CloseDatabase()
+	DoHTTP()
+	DoListEntries()
 }
 
 func (m *model) ListUpdate() error {
