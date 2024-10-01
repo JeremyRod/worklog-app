@@ -51,6 +51,12 @@ type AuthResp struct {
 	}
 }
 
+type Request struct {
+	EventID       int    `json:"event_id"`
+	Description   string `json:"description"`
+	startDatetime string `json:"start_datetime"`
+}
+
 // func (a *Auth) String() {
 // 	return fmt.Sprintf("%s %s %s %s %s ")
 // }
@@ -93,8 +99,11 @@ func DoHTTP() error {
 	var f *os.File
 	var fr *os.File
 	var err error
+
+	username := os.Getenv("USER")
+	pass := os.Getenv("PASSWORD")
 	// for this to work i think I need the company ID and potentially the API_KEY
-	user := Auth{Username: "jeremy.rodarellis@boostdesign.com.au", Password: "Transient99<", DeviceName: "pc", DeviceID: "123456789987654321", CompanyID: "boostdesign", Lang: "eng", Request: struct{}{}}
+	user := Auth{Username: username, Password: pass, DeviceName: "pc", DeviceID: "123456789987654321", CompanyID: "boostdesign", Lang: "eng", Request: struct{}{}}
 	if runtime.GOOS == "windows" {
 		user.DeviceType = "windows"
 	}
@@ -123,20 +132,21 @@ func DoHTTP() error {
 	enc.Encode(&user2)
 	//We Read the response body on the line below.
 
-	//decoder := json.NewDecoder(resp.Body)
+	decoder := json.NewDecoder(resp.Body)
 	respJson := AuthResp{}
 
-	//decoder.Decode(&respJson)
+	decoder.Decode(&respJson)
 	encr.Encode(&respJson)
 
-	body, err := io.ReadAll(resp.Body)
+	// body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Fatalln(err)
 	}
 	Token = respJson.Data.Token
+	//fmt.Println(respJson.Data.Token)
 	//Convert the body to type string
-	sb := string(body)
-	log.Println(sb)
+	//sb := string(body)
+	//log.Println(sb)
 	return err
 }
 
@@ -150,11 +160,17 @@ func DoListEntries() error {
 	postBody, _ := json.Marshal(map[string]any{
 		"lang":               "eng",
 		"company_account_id": "u80375maryst",
-		"user_token":         string(Token),
-		"request":            struct{}{},
+		"user_token":         Token,
+		"user_id":            32,
+		"request":            Request{Description: "Entry test modified"},
+		//"event_id":           8087,
+		//"time_entry_id":      61662,
+		//"modules": "time_entries",
+		//"per_page":           10,
+		//"basic_data":         1,
 	})
 	responseBody := bytes.NewBuffer(postBody)
-	resp, err := http.Post("https://boostdesign.scoro.com/api/v2/timeEntries/list", "application/json", responseBody)
+	resp, err := http.Post("https://boostdesign.scoro.com/api/v2/timeEntries/modify/65056", "application/json", responseBody)
 	if err != nil {
 		//log.Fatalln(err)
 	}
