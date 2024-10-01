@@ -12,6 +12,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/joho/godotenv"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -699,6 +700,10 @@ func main() {
 	// //_, err := ImportWorklog()
 	// //fmt.Println(err)
 	// db.CloseDatabase()
+	err := godotenv.Load("test.env")
+	if err != nil {
+		fmt.Println("Error loading .env file")
+	}
 	DoHTTP()
 	DoListEntries()
 }
