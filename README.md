@@ -11,7 +11,9 @@ It is a local based versions with a local database (sqlite)
 - ~~Add more validation on new entries.~~
 - ~~Summary Page for Days, easily show work completed.~~
 - Scoro API integration
-- 
+    - Allow Submitting of Single entry
+    - Allow submitting of the weekly summary
+    - Provide form for user provided details to retreive user token.
 
 ### Known Bugs
 - ~~If deleting an entry list will not update until navigating away and back~~
