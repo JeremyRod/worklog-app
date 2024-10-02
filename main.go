@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -526,6 +527,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 					m.modRowID = 0
 					m.state = Get
+
+					if err := DoTaskSubmit(entry); err != nil {
+						m.errBuilder += err.Error()
+					}
+
 				} else if s == "enter" && m.modFocusIndex == len(m.modInputs)+1 {
 					if err := db.DeleteEntry(m.modRowID); err != nil {
 						fmt.Println(err)
@@ -676,36 +682,34 @@ func (m *model) resetModState() {
 var db Database = Database{db: nil}
 
 func main() {
-
-	// row2 := EntryRow{entry: Entry{hours: 3.1, projCode: "EOS", desc: "hih"}, entryId: 100}
-	// if err := db.OpenDatabase(); err != nil {
-	// 	fmt.Println(err)
-	// 	err = db.CreateDatabase()
-	// 	if err != nil {
-	// 		fmt.Printf("err: %v", err)
-	// 	}
-	// }
-	//if err := db.SaveEntry(&row2); err != nil {
-	//	fmt.Println(err)
-	//}
-	//if err := db.DeleteEntry(&row); err != nil {
-	//	fmt.Println(err)
-	//}
-
-	// p := tea.NewProgram(initialModel(), tea.WithAltScreen())
-	// if _, err := p.Run(); err != nil {
-	// 	fmt.Printf("Alas, there's been an error: %v", err)
-	// 	os.Exit(1)
-	// }
-	// //_, err := ImportWorklog()
-	// //fmt.Println(err)
-	// db.CloseDatabase()
+	if err := db.OpenDatabase(); err != nil {
+		fmt.Println(err)
+		err = db.CreateDatabase()
+		if err != nil {
+			fmt.Printf("err: %v", err)
+		}
+	}
 	err := godotenv.Load("test.env")
 	if err != nil {
 		fmt.Println("Error loading .env file")
 	}
 	DoHTTP()
 	DoListEntries()
+	// if err := db.SaveEntry(&row2); err != nil {
+	// 	fmt.Println(err)
+	// }
+	// if err := db.DeleteEntry(&row); err != nil {
+	// 	fmt.Println(err)
+	// }
+
+	p := tea.NewProgram(initialModel(), tea.WithAltScreen())
+	if _, err := p.Run(); err != nil {
+		fmt.Printf("Alas, there's been an error: %v", err)
+		os.Exit(1)
+	}
+	//_, err := ImportWorklog()
+	//fmt.Println(err)
+	db.CloseDatabase()
 }
 
 func (m *model) ListUpdate() error {
