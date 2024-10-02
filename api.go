@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"os"
@@ -45,61 +44,53 @@ type AuthResp struct {
 			LocaleNumber         struct {
 				ThousandSeparator string `json:"thousandSeparator"`
 				DecimalSeparator  string `json:"decimalSeparator"`
-			}
-			CompanyAccounts []CompanyAccounts
-		}
-	}
+			} `json:"locale_number"`
+			CompanyAccounts []CompanyAccounts `json:"company_accounts"`
+		} `json:"settings"`
+	} `json:"data"`
+}
+
+type TaskListResp struct {
+	Status     string      `json:"status"`
+	StatusCode int         `json:"statusCode"`
+	Messages   interface{} `json:"messages"`
+	Data       []Data      `json:"data"`
 }
 
 type Request struct {
-	EventID       int    `json:"event_id"`
-	Description   string `json:"description"`
-	startDatetime string `json:"start_datetime"`
+	EventID     int    `json:"event_id"`
+	Description string `json:"description"`
+	Date        string `json:"time_entry_date"`
+	Duration    string `json:"duration"`
+	Completed   bool   `json:"is_completed"`
+	Title       string `json:"title"`
 }
 
-// func (a *Auth) String() {
-// 	return fmt.Sprintf("%s %s %s %s %s ")
-// }
+type Data struct {
+	ActivityID  int    `json:"activity_id"`
+	EventID     int    `json:"event_id"`
+	EventName   string `json:"event_name"`
+	ProjectName string `json:"project_name"`
+	ProjectID   int    `json:"project_id"`
+}
 
 // This should marshal and unmarshal to the Modify API call in Scoro V2 API docs
-type SubmitEntry struct {
-	entry Entry
+type TaskEntry struct {
+	Status     string      `json:"status"`
+	StatusCode int         `json:"statusCode"`
+	Messages   interface{} `json:"messages"`
+	Request    Request
 }
 
-var Token string
-var DeviceID string
-
-func SendNew() error {
-
-	return nil
-}
-
-func DoAuth() error {
-	var f *os.File
-	var err error
-	user := Auth{Username: "jeremy", Password: "hello", DeviceName: "pc", Lang: "eng", CompanyID: "boostdesign"}
-	if runtime.GOOS == "windows" {
-		user.DeviceType = "windows"
-	}
-	b, _ := json.Marshal(&user)
-	fmt.Println(b)
-	if f, err = os.Create("auth.json"); err != nil {
-		panic(err)
-	}
-	enc := json.NewEncoder(f)
-
-	user2 := Auth{}
-	err = json.Unmarshal(b, &user2)
-	enc.Encode(&user2)
-	fmt.Println(user2)
-	return err
-}
+var Authenticate AuthResp
 
 func DoHTTP() error {
 	var f *os.File
 	var fr *os.File
 	var err error
-
+	if fr, err = os.Create("authresp.json"); err != nil {
+		panic(err)
+	}
 	username := os.Getenv("USER")
 	pass := os.Getenv("PASSWORD")
 	// for this to work i think I need the company ID and potentially the API_KEY
@@ -112,18 +103,13 @@ func DoHTTP() error {
 	responseBody := bytes.NewBuffer(postBody)
 	resp, err := http.Post("https://boostdesign.scoro.com/api/v2/userAuth/modify", "application/json", responseBody)
 	if err != nil {
-		//log.Fatalln(err)
+		panic(err)
 	}
 	defer resp.Body.Close()
 	if f, err = os.Create("auth.json"); err != nil {
 		panic(err)
 	}
-	if fr, err = os.Create("authresp.json"); err != nil {
-		panic(err)
-	}
 	enc := json.NewEncoder(f)
-	encr := json.NewEncoder(fr)
-
 	user2 := Auth{}
 	err = json.Unmarshal(postBody, &user2)
 	if err != nil {
@@ -131,57 +117,72 @@ func DoHTTP() error {
 	}
 	enc.Encode(&user2)
 	//We Read the response body on the line below.
-
+	encr := json.NewEncoder(fr)
 	decoder := json.NewDecoder(resp.Body)
-	respJson := AuthResp{}
+	Authenticate = AuthResp{}
 
-	decoder.Decode(&respJson)
-	encr.Encode(&respJson)
+	decoder.Decode(&Authenticate)
+	encr.Encode(&Authenticate)
 
 	// body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Fatalln(err)
 	}
-	Token = respJson.Data.Token
-	//fmt.Println(respJson.Data.Token)
-	//Convert the body to type string
-	//sb := string(body)
-	//log.Println(sb)
 	return err
 }
 
-func DoSubmitEntry() error {
+func DoTaskSubmit(entries ...EntryRow) error {
+	if len(entries) == 0 {
+		return fmt.Errorf("no entries pass in")
+	}
+	for i := 0; i < len(entries); i++ {
+		dur := fmt.Sprintf("%02d:%02d:%02d", int(entries[i].entry.hours.Hours()), int(entries[i].entry.hours.Minutes())%60, int(entries[i].entry.hours.Seconds())%60)
+		postBody, _ := json.Marshal(map[string]any{
+			"lang":               "eng",
+			"company_account_id": "u80375maryst",
+			"user_token":         Authenticate.Data.Token,
+			"user_id":            Authenticate.Data.Settings.UserID,
+			"request":            Request{Description: entries[i].entry.desc, Date: entries[i].entry.date.Format("2006-01-02"), Completed: true, EventID: 8087, Duration: dur},
+		})
+		responseBody := bytes.NewBuffer(postBody)
+		resp, err := http.Post("https://boostdesign.scoro.com/api/v2/timeEntries/modify", "application/json", responseBody)
+		if err != nil {
+			panic(err)
+		}
 
+		decoder := json.NewDecoder(resp.Body)
+		respJson := TaskListResp{}
+		decoder.Decode(&respJson)
+	}
 	return nil
 }
 
 func DoListEntries() error {
-
+	var fr *os.File
+	var err error
+	if fr, err = os.Create("tasklistresp.json"); err != nil {
+		panic(err)
+	}
 	postBody, _ := json.Marshal(map[string]any{
 		"lang":               "eng",
 		"company_account_id": "u80375maryst",
-		"user_token":         Token,
-		"user_id":            32,
-		"request":            Request{Description: "Entry test modified"},
-		//"event_id":           8087,
-		//"time_entry_id":      61662,
+		"user_token":         Authenticate.Data.Token,
+		"user_id":            Authenticate.Data.Settings.UserID,
 		//"modules": "time_entries",
-		//"per_page":           10,
-		//"basic_data":         1,
 	})
 	responseBody := bytes.NewBuffer(postBody)
-	resp, err := http.Post("https://boostdesign.scoro.com/api/v2/timeEntries/modify/65056", "application/json", responseBody)
+	//resp, err := http.Post("https://boostdesign.scoro.com/api/v2/timeEntries/modify/65056", "application/json", responseBody)
+	resp, err := http.Post("https://boostdesign.scoro.com/api/v2/tasks/list", "application/json", responseBody)
+	//resp, err := http.Post("https://boostdesign.scoro.com/api/v2/tasks/filters", "application/json", responseBody)
 	if err != nil {
-		//log.Fatalln(err)
+		panic(err)
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		log.Fatalln(err)
-	}
-	//Convert the body to type string
-	sb := string(body)
-	log.Println(sb)
+	encr := json.NewEncoder(fr)
+	decoder := json.NewDecoder(resp.Body)
+	respJson := TaskListResp{}
+	decoder.Decode(&respJson)
+	encr.Encode(&respJson)
 	return nil
 }
