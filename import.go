@@ -32,7 +32,7 @@ func ImportWorklog() (int, error) {
 		}
 		lineNum++
 		strBytes := []byte(str)
-		fmt.Println(strBytes)
+		//fmt.Println(strBytes)
 		str = strings.Replace(str, "\r\n", "", -1)
 		str = strings.Replace(str, "\t", "", -1)
 		if strBytes[0] == ' ' || strBytes[1] == ' ' {
