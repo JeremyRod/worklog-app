@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -36,11 +37,23 @@ type model struct {
 	viewport   viewport.Model
 	ready      bool
 
-	// List view
+	// Entries List view
 	list       list.Model
 	id         int         // Last current query id
 	maxId      int         // For offset tracking
 	cursorMode cursor.Mode // which to-do items are selected
+
+	// Retreived tasks list view
+	listTask list.Model
+	choice   string
+	taskDone bool // Use this to make the check loop wait for the user to choose a task
+
+	// Login view for uploads
+	loginInputs     []textinput.Model
+	loginFocusIndex int
+	formLogged      bool
+
+	// TODO: logger for error logging, do rotations and nice logging later
 
 	// Track app state for view rendering
 	state ViewState
@@ -91,10 +104,16 @@ var (
 	blurredButton            = blurredStyle.Render("[ Submit ]")
 	focusDelete              = focusedStyle.Render("[ Delete ]")
 	blurDelete               = blurredStyle.Render("[ Delete ]")
+	focusCancel              = focusedStyle.Render("[ Cancel ]")
+	blurCancel               = blurredStyle.Render("[ Cancel ]")
 	focusSave                = focusedStyle.Render("[ Save ]")
 	blurSave                 = blurredStyle.Render("[ Save ]")
+	focusUpload              = focusedStyle.Render("[ Upload ]")
+	blurUpload               = blurredStyle.Render("[ Upload ]")
 	focusImport              = focusedStyle.Render("[ Import ]")
 	blurImport               = blurredStyle.Render("[ Import ]")
+	focusUnlink              = focusedStyle.Render("[ Unlink ]")
+	blurUnlink               = blurredStyle.Render("[ Unlink ]")
 	submitFailed        bool = false
 )
 
@@ -117,6 +136,14 @@ const (
 	submit
 	delete
 	imp
+	unlink
+)
+
+const (
+	username = iota
+	password
+	cancel
+	submitted
 )
 
 type ViewState int
@@ -126,12 +153,15 @@ const (
 	Get
 	Modify
 	Summary
+	Task
+	Login
 )
 
 func initialModel() model {
 	m := model{
 		inputs:      make([]textinput.Model, submit),
 		modInputs:   make([]textinput.Model, submit),
+		loginInputs: make([]textinput.Model, cancel), // Only up to cancel since only two are inputs, rest are buttons.
 		inputsPos:   make([]int, submit),
 		list:        list.Model{},
 		state:       New,
@@ -228,6 +258,24 @@ func initialModel() model {
 		m.modInputs[i] = t
 	}
 
+	for i := range m.loginInputs {
+		t = textinput.New()
+		t.Cursor.Style = cursorStyle
+		t.CharLimit = 50
+
+		switch i {
+		case username:
+			t.Placeholder = "Username/Email here"
+			t.EchoMode = textinput.EchoNormal
+			t.Focus()
+
+		case password:
+			t.Placeholder = "Password"
+			t.EchoMode = textinput.EchoPassword
+		}
+		m.loginInputs[i] = t
+	}
+
 	m.cursorMode = cursor.CursorStatic
 	return m
 }
@@ -259,8 +307,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 				for i := range ents {
-					m.sumContent += fmt.Sprintf("%s%s\n", ents[i].Title(), ents[i].Description())
-					m.sumContent += fmt.Sprintln("   ")
+					m.sumContent += fmt.Sprintf("%s\n%s\n", ents[i].Title(), ents[i].Description())
 				}
 
 				headerHeight := lipgloss.Height(m.headerView())
@@ -288,7 +335,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if items := m.list.Items(); len(items) != 0 {
 					item := items[m.list.Index()].(EntryRow)
 					if err := db.DeleteEntry(item.entryId); err != nil {
-						fmt.Println(err)
+						log.Println(err)
 					}
 					m.modRowID = 0
 					m.id = 0
@@ -508,6 +555,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.state = New
 
 			case "tab":
+				items := []list.Item{}
+				m.list = list.New(items, list.NewDefaultDelegate(), 0, 0)
+				m.list.Title = "Worklog Entries"
+				//m.id = 0
 				m.resetModState()
 				m.ListUpdate()
 
@@ -528,16 +579,51 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.modRowID = 0
 					m.state = Get
 
-					if err := DoTaskSubmit(entry); err != nil {
-						m.errBuilder += err.Error()
-					}
-
 				} else if s == "enter" && m.modFocusIndex == len(m.modInputs)+1 {
 					if err := db.DeleteEntry(m.modRowID); err != nil {
-						fmt.Println(err)
+						log.Println(err)
 					}
 					m.modRowID = 0
 					m.state = Get
+
+				} else if s == "enter" && m.modFocusIndex == len(m.modInputs)+2 {
+					// scoro upload
+					entry := EntryRow{}
+					if err := entry.FillData(m.modInputs); err != nil {
+						m.errBuilder = err.Error()
+						submitFailed = true
+						break
+					}
+					entry.entryId = m.modRowID
+					// Get user token
+					check := LoginGetTasks(&m)
+					if check {
+						m.state = Login
+						log.Println("Login failed/need creds")
+						break
+					}
+					ok, err := CheckEventCodeMap(&m, entry)
+					if err != nil {
+						m.errBuilder += err.Error()
+						break
+					}
+					if ok {
+						// Get user token
+						if err := DoTaskSubmit(entry); err != nil {
+							m.errBuilder += err.Error()
+						}
+						// if check event codes needs some interaction, dont go to get state.
+						m.modRowID = 0
+						m.state = Get
+					}
+				} else if s == "enter" && m.modFocusIndex == len(m.modInputs)+3 {
+					entry := EntryRow{}
+					if err := entry.FillData(m.modInputs); err != nil {
+						m.errBuilder = err.Error()
+						submitFailed = true
+						break
+					}
+					db.DeleteLink(entry.entry.projCode)
 				}
 
 				// Cycle indexes
@@ -547,10 +633,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.modFocusIndex++
 				}
 
-				if m.modFocusIndex > len(m.modInputs)+1 {
+				if m.modFocusIndex > len(m.modInputs)+3 {
 					m.modFocusIndex = 0
 				} else if m.modFocusIndex < 0 {
-					m.modFocusIndex = len(m.modInputs) + 1
+					m.modFocusIndex = len(m.modInputs) + 3
 				}
 				cmds := make([]tea.Cmd, len(m.modInputs))
 				for i := 0; i <= len(m.modInputs)-1; i++ {
@@ -571,12 +657,81 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		cmd = m.updateInputs(msg)
 	}
+	if m.state == Task {
+		switch msg := msg.(type) {
+		case tea.WindowSizeMsg:
+			m.listTask.SetWidth(msg.Width)
+			return m, nil
+
+		case tea.KeyMsg:
+			switch keypress := msg.String(); keypress {
+			case "q", "ctrl+c":
+				return m, tea.Quit
+
+			case "enter": // Once a task is selected go back to modify view
+				i := m.listTask.SelectedItem()
+				AddToTaskMap(m.choice, i.(Data).EventName)
+				m.state = Modify
+			}
+		}
+		m.listTask, cmd = m.listTask.Update(msg)
+	}
+	if m.state == Login {
+		switch msg := msg.(type) {
+		case tea.WindowSizeMsg:
+			m.listTask.SetWidth(msg.Width)
+			return m, nil
+
+		case tea.KeyMsg:
+			switch keypress := msg.String(); keypress {
+			case "q", "ctrl+c":
+				return m, tea.Quit
+
+			case "enter", "up", "down", "left", "right": // Once a task is selected go back to modify view
+				if keypress == "enter" && m.loginFocusIndex == len(m.loginInputs) {
+					m.state = Modify
+					LoginGetTaskForm(&m, m.loginInputs[username].Value(), m.loginInputs[password].Value())
+				} else if keypress == "enter" && m.loginFocusIndex == len(m.loginInputs)+1 {
+					m.resetLoginState()
+					m.state = Modify
+				}
+				// Cycle indexes
+				if keypress == "up" || keypress == "left" {
+					m.loginFocusIndex--
+				} else {
+					m.loginFocusIndex++
+				}
+
+				if m.loginFocusIndex > len(m.loginInputs)+1 {
+					m.loginFocusIndex = 0
+				} else if m.loginFocusIndex < 0 {
+					m.loginFocusIndex = len(m.loginInputs) + 1
+				}
+				cmds := make([]tea.Cmd, len(m.loginInputs))
+				for i := 0; i <= len(m.loginInputs)-1; i++ {
+					if i == m.loginFocusIndex {
+						// Set focused state
+						cmds[i] = m.loginInputs[i].Focus()
+						m.loginInputs[i].PromptStyle = focusedStyle
+						m.loginInputs[i].TextStyle = focusedStyle
+						continue
+					}
+					// Remove focused state
+					m.loginInputs[i].Blur()
+					m.loginInputs[i].PromptStyle = noStyle
+					m.loginInputs[i].TextStyle = noStyle
+				}
+				return m, tea.Batch(cmds...)
+			}
+		}
+		cmd = m.updateInputs(msg)
+	}
 	return m, cmd
 }
 
 func (m *model) updateInputs(msg tea.Msg) tea.Cmd {
 	cmds := make([]tea.Cmd, len(m.inputs))
-
+	loginCmds := make([]tea.Cmd, len(m.loginInputs))
 	// Only text inputs with Focus() set will respond, so it's safe to simply
 	// update all of them here without any further logic.
 	if m.state == New {
@@ -587,6 +742,10 @@ func (m *model) updateInputs(msg tea.Msg) tea.Cmd {
 		for i := range m.modInputs {
 			m.modInputs[i], cmds[i] = m.modInputs[i].Update(msg)
 		}
+	} else if m.state == Login {
+		for i := range m.loginInputs {
+			m.loginInputs[i], loginCmds[i] = m.loginInputs[i].Update(msg)
+		}
 	}
 
 	return tea.Batch(cmds...)
@@ -595,6 +754,11 @@ func (m *model) updateInputs(msg tea.Msg) tea.Cmd {
 func (m model) View() string {
 	var b strings.Builder
 	switch m.state {
+	case Task:
+		_, err := b.WriteString(docStyle.Render(m.listTask.View()))
+		if err != nil {
+			b.WriteString(fmt.Sprintf("%v", err))
+		}
 	case New:
 		useHighPerformanceRenderer = false
 		for i := range m.inputs {
@@ -603,7 +767,6 @@ func (m model) View() string {
 				b.WriteRune('\n')
 			}
 		}
-
 		button := blurImport
 		if m.focusIndex == len(m.inputs)+1 {
 			button = focusImport
@@ -641,7 +804,15 @@ func (m model) View() string {
 		if m.modFocusIndex == len(m.modInputs)+1 {
 			button2 = focusDelete
 		}
-		fmt.Fprintf(&b, "\n\n%s\t\t%s\n\n", button, button2)
+		button3 := blurUpload
+		if m.modFocusIndex == len(m.modInputs)+2 {
+			button3 = focusUpload
+		}
+		button4 := blurUnlink
+		if m.modFocusIndex == len(m.modInputs)+3 {
+			button4 = focusUnlink
+		}
+		fmt.Fprintf(&b, "\n\n%s\t%s\t%s\t%s\n\n", button, button2, button3, button4)
 
 	case Summary:
 		// if !m.ready {
@@ -649,6 +820,23 @@ func (m model) View() string {
 		// } else {
 		fmt.Fprintf(&b, "\n%s\n%s\n%s", m.headerView(), m.viewport.View(), m.footerView()) //, m.footerView())
 		//}
+	case Login:
+		useHighPerformanceRenderer = false
+		for i := range m.loginInputs {
+			b.WriteString(m.loginInputs[i].View())
+			if i < len(m.loginInputs)-1 {
+				b.WriteRune('\n')
+			}
+		}
+		button := blurSave
+		if m.loginFocusIndex == len(m.loginInputs) {
+			button = focusSave
+		}
+		button2 := blurCancel
+		if m.loginFocusIndex == len(m.loginInputs)+1 {
+			button2 = focusCancel
+		}
+		fmt.Fprintf(&b, "\n\n%s\t%s\n\n", button, button2)
 	}
 	if submitFailed {
 		b.WriteString(helpStyle.Render(m.errBuilder))
@@ -679,37 +867,76 @@ func (m *model) resetModState() {
 	}
 }
 
+func (m *model) resetLoginState() {
+	//fmt.Println(m.inputs[hours].Value())
+	for v := range m.loginInputs {
+		m.loginInputs[v].Reset()
+	}
+}
+
 var db Database = Database{db: nil}
 
 func main() {
+	// Logger for dev
+	f, err := os.OpenFile("testlogfile.txt", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		log.Fatalf("error opening file: %v", err)
+	}
+	defer f.Close()
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
+	log.SetOutput(f)
+
 	if err := db.OpenDatabase(); err != nil {
-		fmt.Println(err)
+		log.Println(err)
 		err = db.CreateDatabase()
 		if err != nil {
 			fmt.Printf("err: %v", err)
 		}
 	}
-	err := godotenv.Load("test.env")
+
+	// Get the saved projevent links, errs will return empty map, system can still run.
+	ProjCodeToTask, err = db.QueryLinks()
 	if err != nil {
-		fmt.Println("Error loading .env file")
+		log.Println(err)
 	}
-	DoHTTP()
-	DoListEntries()
-	// if err := db.SaveEntry(&row2); err != nil {
-	// 	fmt.Println(err)
-	// }
-	// if err := db.DeleteEntry(&row); err != nil {
-	// 	fmt.Println(err)
-	// }
+	err = godotenv.Load("user.env")
+	if err != nil {
+		log.Println("Error loading user.env file")
+	}
 
 	p := tea.NewProgram(initialModel(), tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
-		fmt.Printf("Alas, there's been an error: %v", err)
+		log.Printf("Alas, there's been an error: %v", err)
 		os.Exit(1)
 	}
-	//_, err := ImportWorklog()
-	//fmt.Println(err)
 	db.CloseDatabase()
+}
+
+// I think this will only work for one entry, rethink logic for multi submission.
+func CheckEventCodeMap(m *model, entries ...EntryRow) (bool, error) {
+	// Check to see if we have all proj codes mapped to an event_id
+	check := true
+	for i := 0; i < len(entries); i++ {
+		_, ok := ProjCodeToTask[entries[i].entry.projCode]
+		if !ok {
+			check = false
+			items := TaskList.constructTaskList()
+			m.choice = entries[i].entry.projCode
+			m.listTask = list.New(items, list.NewDefaultDelegate(), 0, 0)
+			m.listTask.Title = "Choose a task"
+			m.state = Task
+			m.listTask.SetSize(m.winW, m.winH)
+		}
+	}
+	return check, nil
+}
+
+func (d *TaskListResp) constructTaskList() []list.Item {
+	list := []list.Item{}
+	for _, v := range TaskList.Data {
+		list = append(list, v)
+	}
+	return list
 }
 
 func (m *model) ListUpdate() error {
