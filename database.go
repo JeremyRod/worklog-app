@@ -29,10 +29,12 @@ type EntryRow struct {
 	entryId int
 }
 
+var ProjCodeToTask map[string]int // This is nil, reference before assignment will cause nil pointer issues
+
 func (d *Database) SaveEntry(entry EntryRow) error {
 	tx, err := d.db.Begin()
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 	}
 	stmt, err := tx.Prepare("insert into worklog(hours, desc, projcode, starttime, endtime, date) values(?, ?, ?, ?, ?, ?)")
 
@@ -44,7 +46,7 @@ func (d *Database) SaveEntry(entry EntryRow) error {
 		entry.entry.desc, entry.entry.projCode, entry.entry.startTime,
 		entry.entry.endTime, entry.entry.date)
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 		return err
 	}
 	err = tx.Commit()
@@ -58,16 +60,16 @@ func (d *Database) DeleteEntry(e int) error {
 	sqlstmt := `delete from worklog where id = ?;`
 	tx, err := d.db.Begin()
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 	}
 	stmt, err := tx.Prepare(sqlstmt)
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 	}
 	defer stmt.Close()
 	_, err = stmt.Exec(e)
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 	}
 	err = tx.Commit()
 	if err != nil {
@@ -86,18 +88,18 @@ func (d *Database) ModifyEntry(e EntryRow) error {
 				endtime = ? where id = ?;`
 	tx, err := d.db.Begin()
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 	}
 	stmt, err := tx.Prepare(sqlstmt)
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 	}
 	defer stmt.Close()
 	_, err = stmt.Exec(e.entry.desc, e.entry.hours,
 		e.entry.projCode, e.entry.date, e.entry.startTime,
 		e.entry.endTime, e.entryId)
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 	}
 	err = tx.Commit()
 	if err != nil {
@@ -204,7 +206,7 @@ func (d *Database) QueryEntry(e EntryRow) (EntryRow, error) {
 func (d *Database) CreateDatabase() error {
 
 	sqlStmt := `
-	create table worklog (id integer not null primary key, hours time not null, desc text, starttime time not null, endtime time, projcode text not null, date date not null
+	create table worklog (id integer not null primary key, hours time not null, desc text, starttime time not null, endtime time, projcode text not null, date date not null)
 	delete from worklog;
 	`
 	_, err := d.db.Exec(sqlStmt)
@@ -249,6 +251,8 @@ func (d *Database) OpenDatabase() error {
 	if err != nil {
 		d.CreateDatabase()
 	}
+	d.CreateEventDatabase()
+	//defer row.Close()
 	return nil
 }
 
@@ -287,5 +291,121 @@ func (e *EntryRow) FillData(inputs []textinput.Model) error {
 	if e.entry.hours == 0 || e.entry.projCode == "" {
 		return fmt.Errorf("empty hours or projcode, please check inputs")
 	}
+	return nil
+}
+
+// TODO: Write some functions for creating, reading and writing from the Proj/Event_Id table.
+// read from startup
+
+func (d *Database) CreateEventDatabase() error {
+
+	sqlStmt := `
+	CREATE TABLE IF NOT EXISTS projeventlink 
+		(id INTEGER PRIMARY KEY, 
+		projcode TEXT NOT NULL, 
+		eventid INTEGER NOT NULL,
+		UNIQUE(projcode)
+		);`
+	_, err := d.db.Exec(sqlStmt)
+	if err != nil {
+		log.Fatalf("%q: %s\n", err, sqlStmt)
+		//return fmt.Errorf("db stmt fail %q: %s", err, sqlStmt)
+	}
+	log.Println("Table 'users' created successfully (or already exists)")
+	return nil
+}
+
+// This should be the only function required to read links
+func (d *Database) QueryLinks() (map[string]int, error) {
+	records := make(map[string]int)
+
+	// Query the table for all rows
+	rows, err := d.db.Query("SELECT projcode, eventid FROM projeventlink")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer rows.Close()
+
+	// Loop through the result set and add the values to the map
+	for rows.Next() {
+		var projCode string
+		var eventID int
+		err = rows.Scan(&projCode, &eventID) // Scan each row into the variables
+		if err != nil {
+			log.Println(err)
+			return map[string]int{}, err
+		}
+		// Add the result to the map
+		records[projCode] = eventID
+	}
+
+	// Check for any error that occurred during the iteration
+	if err = rows.Err(); err != nil {
+		log.Println(err)
+		return map[string]int{}, err
+	}
+
+	// Print the map to verify the data
+	log.Println("Records from the database:", records)
+	return records, nil
+}
+
+func (d *Database) SaveLink(proj string, id int) error {
+	tx, err := d.db.Begin()
+	if err != nil {
+		log.Println(err)
+	}
+	stmt, err := tx.Prepare("INSERT INTO projeventlink(projcode, eventid) values(?, ?)")
+
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer stmt.Close()
+	_, err = stmt.Exec(proj, id)
+	if err != nil {
+		tx.Rollback()
+		//log.Println(err)
+		return err
+	}
+	// Below code for if we decide to batch the write
+	// for code, value := range linkmap {
+	// 	_, err = stmt.Exec(code, value)
+	// 	if err != nil {
+	// 		tx.Rollback()
+	// 		log.Fatal(err)
+	// 		return err
+	// 	}
+	// }
+	err = tx.Commit()
+	if err != nil {
+		log.Fatal(err)
+	}
+	return nil
+}
+
+func (d *Database) DeleteLink(projCode string) error {
+	// Prepare the DELETE SQL statement
+	stmt, err := d.db.Prepare("DELETE FROM projeventlink WHERE projcode = ?")
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	// Execute the statement with the provided projCode and eventID
+	_, err = stmt.Exec(projCode)
+	if err != nil {
+		return err
+	}
+	// Log if anything was deleted.
+	// rows, err := res.RowsAffected()
+	// if err != nil {
+	// 	return err
+	// }
+	// if rows == 0 {
+	// 	log.Printf("No link found for projcode '%s'.\n", projCode)
+	// } else {
+	// 	log.Printf("Deleted %d link(s) for projcode '%s'.\n", rows, projCode)
+	// }
+
 	return nil
 }
