@@ -153,7 +153,7 @@ func (d *Database) QueryEntries(m *model) ([]EntryRow, error) {
 	if m.id == 0 {
 		rows, err = d.db.Query("select date, id, projcode, hours, desc from worklog order by id desc limit 10")
 	} else {
-		rows, err = d.db.Query("select date, id, projcode, hours, desc from worklog order by id desc limit 10 offset ?", m.maxId-m.id)
+		rows, err = d.db.Query("select date, id, projcode, hours, desc from worklog order by id desc limit 10 offset ?", m.maxId-m.id+1)
 	}
 	if err != nil {
 		log.Fatal(err)
