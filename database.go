@@ -206,9 +206,15 @@ func (d *Database) QueryEntry(e EntryRow) (EntryRow, error) {
 func (d *Database) CreateDatabase() error {
 
 	sqlStmt := `
-	create table worklog (id integer not null primary key, hours time not null, desc text, starttime time not null, endtime time, projcode text not null, date date not null)
-	delete from worklog;
-	`
+	CREATE TABLE IF NOT EXIST worklog (
+		id INTEGER NOT NULL PRIMARY KEY, 
+		hours TIME NOT NULL, 
+		desc TEXT, 
+		starttime TIME NOT NULL, 
+		endtime TIME, 
+		projcode TEXT NOT NULL, 
+		date DATE NOT NULL
+	);`
 	_, err := d.db.Exec(sqlStmt)
 	if err != nil {
 		log.Printf("%q: %s\n", err, sqlStmt)
@@ -247,10 +253,8 @@ func (d *Database) OpenDatabase() error {
 		return errors.New("database broke")
 	}
 	d.db = db
-	_, err = d.db.Query("select * from worklog;")
-	if err != nil {
-		d.CreateDatabase()
-	}
+	d.CreateDatabase()
+
 	d.CreateEventDatabase()
 	//defer row.Close()
 	return nil

@@ -888,10 +888,6 @@ func main() {
 
 	if err := db.OpenDatabase(); err != nil {
 		log.Println(err)
-		err = db.CreateDatabase()
-		if err != nil {
-			fmt.Printf("err: %v", err)
-		}
 	}
 
 	// Get the saved projevent links, errs will return empty map, system can still run.
