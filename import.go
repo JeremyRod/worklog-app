@@ -10,29 +10,36 @@ import (
 )
 
 // Export worklog function will take all rows from db and append to file.
-func ExportWorklog() (int, error) {
-	// Read from db, format the read into a string, write newline.
-	var entry EntryRow
-	offset := 0
-	prevDate := time.Time{}
-	f, err := os.OpenFile("export.txt", os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0755)
-	if err != nil {
-		return -1, err
-	}
-	defer f.Close()
-	w := bufio.NewWriter(f)
-	for {
-		entry, offset, err = db.QueryExport(offset)
-		if err != nil {
-			return -1, err
-		}
-		if prevDate != entry.entry.date {
-			prevDate = entry.entry.date
-			w.WriteString(fmt.Sprintf("%s\n", entry.entry.date.Format("2006-01-02")))
-		}
-		w.WriteString(fmt.Sprintf("\t%s %s\n\t\t%s", entry.entry.startTime.Format("15:05"), entry.entry.projCode, entry.entry.desc))
-	}
-}
+// func ExportWorklog() (int, error) {
+// 	// Read from db, format the read into a string, write newline.
+// 	var entry EntryRow
+// 	prevDate := time.Time{}
+// 	startId := -1
+// 	overrun := false
+// 	f, err := os.OpenFile("export.txt", os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0755)
+// 	if err != nil {
+// 		return -1, err
+// 	}
+// 	defer f.Close()
+// 	w := bufio.NewWriter(f)
+// 	for {
+// 		if err != nil {
+// 			return -1, err
+// 		}
+// 		if startId == -1 {
+// 			startId = entry.entryId
+// 		}
+// 		if startId == entry.entryId && overrun {
+// 			return 0, nil
+// 		}
+// 		overrun = true
+// 		if prevDate != entry.entry.date {
+// 			prevDate = entry.entry.date
+// 			w.WriteString(fmt.Sprintf("%s\n", entry.entry.date.Format("2006-01-02")))
+// 		}
+// 		w.WriteString(fmt.Sprintf("\t%02d:%02d:%02d %s\n\t\t%s\n", int(entry.entry.hours.Hours()), int(entry.entry.hours.Minutes())%60, int(entry.entry.hours.Seconds())%60, entry.entry.projCode, entry.entry.desc))
+// 	}
+// }
 
 // For the moment the import function will only look for a file
 func ImportWorklog() (int, error) {

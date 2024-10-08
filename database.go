@@ -1,10 +1,12 @@
 package main
 
 import (
+	"bufio"
 	"database/sql"
 	"errors"
 	"fmt"
 	"log"
+	"os"
 	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -180,33 +182,51 @@ func (d *Database) QueryEntries(m *model) ([]EntryRow, error) {
 	return ents, nil
 }
 
-func (d *Database) QueryExport(offset int) (EntryRow, int, error) {
+func (d *Database) QueryAndExport() error {
 	var (
 		rows *sql.Rows
 		err  error
 	)
-	rows, err = d.db.Query("select date, id, projcode, hours, desc from worklog order by id limit 1 offset ?", offset)
+	prevDate := time.Time{}
+	f, err := os.OpenFile("export.txt", os.O_RDWR|os.O_CREATE|os.O_TRUNC|os.O_SYNC, 0755)
+	if err != nil {
+		return err
+	}
+	rows, err = d.db.Query("select date, id, projcode, hours, desc from worklog order by date ASC")
 	if err != nil {
 		log.Fatal(err)
-		return EntryRow{}, -1, err
+		return err
 	}
 	defer rows.Close()
-	offset++
-	ent := EntryRow{}
-	if !rows.Next() {
-		return EntryRow{}, -1, err
-	}
-	err = rows.Scan(&ent.entry.date, &ent.entryId, &ent.entry.projCode, &ent.entry.hours, &ent.entry.desc)
-	if err != nil {
-		log.Fatal(err)
-		return EntryRow{}, -1, err
+	bufferSize := 64 * 1024 // 64 KB
+	w := bufio.NewWriterSize(f, bufferSize)
+	for rows.Next() {
+		ent := EntryRow{}
+		err = rows.Scan(&ent.entry.date, &ent.entryId, &ent.entry.projCode, &ent.entry.hours, &ent.entry.desc)
+		if err != nil {
+			log.Fatal(err)
+			return err
+		}
+		if prevDate != ent.entry.date {
+			prevDate = ent.entry.date
+			_, err = w.WriteString(fmt.Sprintf("%s\n", ent.entry.date.Format("2006-01-02")))
+			if err != nil {
+				log.Println(err)
+			}
+		}
+		_, err = w.WriteString(fmt.Sprintf("\t%02d:%02d:%02d %s\n\t\t%s\n", int(ent.entry.hours.Hours()), int(ent.entry.hours.Minutes())%60, int(ent.entry.hours.Seconds())%60, ent.entry.projCode, ent.entry.desc))
+		if err != nil {
+			log.Println(err)
+		}
+		w.Flush()
 	}
 	err = rows.Err()
 	if err != nil {
 		log.Fatal(err)
-		return EntryRow{}, -1, err
+		return err
 	}
-	return ent, offset, nil
+	f.Close()
+	return nil
 }
 
 func (d *Database) QueryEntry(e EntryRow) (EntryRow, error) {
