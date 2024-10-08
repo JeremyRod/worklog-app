@@ -20,6 +20,11 @@ import (
 
 var useHighPerformanceRenderer = false
 
+var (
+	version   = "dev"  // default value, overridden at build time
+	gitCommit = "none" // default value, overridden at build time
+)
+
 type model struct {
 	// New inputs
 	inputs     []textinput.Model // items on the to-do list
@@ -112,6 +117,8 @@ var (
 	blurUpload               = blurredStyle.Render("[ Upload ]")
 	focusImport              = focusedStyle.Render("[ Import ]")
 	blurImport               = blurredStyle.Render("[ Import ]")
+	focusExport              = focusedStyle.Render("[ Export ]")
+	blurExport               = blurredStyle.Render("[ Export ]")
 	focusUnlink              = focusedStyle.Render("[ Unlink ]")
 	blurUnlink               = blurredStyle.Render("[ Unlink ]")
 	submitFailed        bool = false
@@ -493,6 +500,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						submitFailed = true
 						m.errBuilder = err.Error() + " " + strconv.Itoa(line)
 					}
+				} else if s == "enter" && m.focusIndex == len(m.inputs)+2 {
+					err := db.QueryAndExport()
+					if err != nil {
+						log.Println(err)
+					}
 				}
 
 				// Cycle cursor position in input
@@ -517,10 +529,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.focusIndex++
 				}
 
-				if m.focusIndex > len(m.inputs)+1 {
+				if m.focusIndex > len(m.inputs)+2 {
 					m.focusIndex = 0
 				} else if m.focusIndex < 0 {
-					m.focusIndex = len(m.inputs) + 1
+					m.focusIndex = len(m.inputs) + 2
 				}
 
 				cmds := make([]tea.Cmd, len(m.inputs))
@@ -778,7 +790,11 @@ func (m model) View() string {
 		if m.focusIndex == len(m.inputs) {
 			button2 = focusedButton
 		}
-		fmt.Fprintf(&b, "\n\n%s\t\t%s\n\n", button2, button)
+		button3 := blurExport
+		if m.focusIndex == len(m.inputs)+2 {
+			button3 = focusExport
+		}
+		fmt.Fprintf(&b, "\n\n%s\t\t%s\t\t%s\n\n", button2, button, button3)
 
 	case Get:
 		useHighPerformanceRenderer = false
@@ -841,6 +857,7 @@ func (m model) View() string {
 		}
 		fmt.Fprintf(&b, "\n\n%s\t%s\n\n", button, button2)
 	}
+	b.WriteString(helpStyle.Render(fmt.Sprintf("Version: %s\t rev: %s\n", version, gitCommit)))
 	if submitFailed {
 		b.WriteString(helpStyle.Render(m.errBuilder))
 	} else {
@@ -893,7 +910,7 @@ func main() {
 		log.Println(err)
 	}
 
-	// // Get the saved projevent links, errs will return empty map, system can still run.
+	// Get the saved projevent links, errs will return empty map, system can still run.
 	ProjCodeToTask, err = db.QueryLinks()
 	if err != nil {
 		log.Println(err)
@@ -908,7 +925,6 @@ func main() {
 		log.Printf("Alas, there's been an error: %v", err)
 		os.Exit(1)
 	}
-	//ExportWorklog()
 	db.CloseDatabase()
 }
 
