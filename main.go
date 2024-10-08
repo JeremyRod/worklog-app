@@ -554,6 +554,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "ctrl+i": // Switch back to New entry screen.
 				m.state = New
 
+			case "ctrl+c":
+				return m, tea.Quit
+
 			case "tab":
 				items := []list.Item{}
 				m.list = list.New(items, list.NewDefaultDelegate(), 0, 0)
@@ -665,7 +668,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case tea.KeyMsg:
 			switch keypress := msg.String(); keypress {
-			case "q", "ctrl+c":
+			case "ctrl+c":
 				return m, tea.Quit
 
 			case "enter": // Once a task is selected go back to modify view
@@ -684,7 +687,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case tea.KeyMsg:
 			switch keypress := msg.String(); keypress {
-			case "q", "ctrl+c":
+			case "ctrl+c":
 				return m, tea.Quit
 
 			case "enter", "up", "down", "left", "right": // Once a task is selected go back to modify view
