@@ -180,6 +180,35 @@ func (d *Database) QueryEntries(m *model) ([]EntryRow, error) {
 	return ents, nil
 }
 
+func (d *Database) QueryExport(offset int) (EntryRow, int, error) {
+	var (
+		rows *sql.Rows
+		err  error
+	)
+	rows, err = d.db.Query("select date, id, projcode, hours, desc from worklog order by id limit 1 offset ?", offset)
+	if err != nil {
+		log.Fatal(err)
+		return EntryRow{}, -1, err
+	}
+	defer rows.Close()
+	offset++
+	ent := EntryRow{}
+	if !rows.Next() {
+		return EntryRow{}, -1, err
+	}
+	err = rows.Scan(&ent.entry.date, &ent.entryId, &ent.entry.projCode, &ent.entry.hours, &ent.entry.desc)
+	if err != nil {
+		log.Fatal(err)
+		return EntryRow{}, -1, err
+	}
+	err = rows.Err()
+	if err != nil {
+		log.Fatal(err)
+		return EntryRow{}, -1, err
+	}
+	return ent, offset, nil
+}
+
 func (d *Database) QueryEntry(e EntryRow) (EntryRow, error) {
 	var (
 		rows *sql.Rows
@@ -206,7 +235,7 @@ func (d *Database) QueryEntry(e EntryRow) (EntryRow, error) {
 func (d *Database) CreateDatabase() error {
 
 	sqlStmt := `
-	CREATE TABLE IF NOT EXIST worklog (
+	CREATE TABLE IF NOT EXISTS worklog (
 		id INTEGER NOT NULL PRIMARY KEY, 
 		hours TIME NOT NULL, 
 		desc TEXT, 

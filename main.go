@@ -893,7 +893,7 @@ func main() {
 		log.Println(err)
 	}
 
-	// Get the saved projevent links, errs will return empty map, system can still run.
+	// // Get the saved projevent links, errs will return empty map, system can still run.
 	ProjCodeToTask, err = db.QueryLinks()
 	if err != nil {
 		log.Println(err)
@@ -908,6 +908,7 @@ func main() {
 		log.Printf("Alas, there's been an error: %v", err)
 		os.Exit(1)
 	}
+	//ExportWorklog()
 	db.CloseDatabase()
 }
 

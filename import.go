@@ -9,6 +9,31 @@ import (
 	"time"
 )
 
+// Export worklog function will take all rows from db and append to file.
+func ExportWorklog() (int, error) {
+	// Read from db, format the read into a string, write newline.
+	var entry EntryRow
+	offset := 0
+	prevDate := time.Time{}
+	f, err := os.OpenFile("export.txt", os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0755)
+	if err != nil {
+		return -1, err
+	}
+	defer f.Close()
+	w := bufio.NewWriter(f)
+	for {
+		entry, offset, err = db.QueryExport(offset)
+		if err != nil {
+			return -1, err
+		}
+		if prevDate != entry.entry.date {
+			prevDate = entry.entry.date
+			w.WriteString(fmt.Sprintf("%s\n", entry.entry.date.Format("2006-01-02")))
+		}
+		w.WriteString(fmt.Sprintf("\t%s %s\n\t\t%s", entry.entry.startTime.Format("15:05"), entry.entry.projCode, entry.entry.desc))
+	}
+}
+
 // For the moment the import function will only look for a file
 func ImportWorklog() (int, error) {
 	file, err := os.Open("worklog.txt")
