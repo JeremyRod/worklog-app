@@ -10,6 +10,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/cursor"
 	"github.com/charmbracelet/bubbles/list"
+	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
@@ -58,10 +59,14 @@ type model struct {
 	loginFocusIndex int
 	formLogged      bool
 
+	// Notes text area
+	textarea textarea.Model
+
 	// TODO: logger for error logging, do rotations and nice logging later
 
 	// Track app state for view rendering
-	state ViewState
+	state    ViewState
+	substate SubState
 
 	// Maintain current window size in model for list rerendering.
 	winH int
@@ -98,6 +103,17 @@ func (m model) footerView() string {
 }
 
 var (
+	modelStyle = lipgloss.NewStyle().
+			Width(50).
+			Height(10).
+			Align(lipgloss.Left).
+			BorderStyle(lipgloss.HiddenBorder())
+	focusedModelStyle = lipgloss.NewStyle().
+				Width(50).
+				Height(10).
+				Align(lipgloss.Left).
+				BorderStyle(lipgloss.NormalBorder()).
+				BorderForeground(lipgloss.Color("69"))
 	focusedStyle             = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
 	blurredStyle             = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	cursorStyle              = focusedStyle
@@ -164,6 +180,13 @@ const (
 	Login
 )
 
+type SubState int
+
+const (
+	ListView SubState = iota
+	NotesView
+)
+
 func initialModel() model {
 	m := model{
 		inputs:      make([]textinput.Model, submit),
@@ -172,6 +195,7 @@ func initialModel() model {
 		inputsPos:   make([]int, submit),
 		list:        list.Model{},
 		state:       New,
+		substate:    ListView,
 		id:          0,
 		currentDate: time.Now(),
 	}
@@ -183,6 +207,11 @@ func initialModel() model {
 
 	m.list = list.New(items, list.NewDefaultDelegate(), 0, 0)
 	m.list.Title = "Worklog Entries"
+
+	ti := textarea.New()
+	ti.Placeholder = "Add notes here...."
+	ti.CharLimit = 2000
+	m.textarea = ti
 
 	for i := range m.inputs {
 		t = textinput.New()
@@ -466,90 +495,107 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.list.SetSize(m.winW, m.winH)
 
 		case tea.KeyMsg:
-			switch msg.String() {
+			if m.substate == ListView {
+				switch msg.String() {
 
-			case "tab":
-				m.ListUpdate()
+				case "tab":
+					m.ListUpdate()
 
-			case "ctrl+c", "esc":
-				return m, tea.Quit
+				case "ctrl+shift+left", "ctrl+shift+right":
+					m.substate = NotesView
 
-			// Set focus to next input
-			case "enter", "up", "down", "left", "right":
-				s := msg.String()
+				case "ctrl+c":
+					return m, tea.Quit
 
-				// Did the user press enter while the submit button was focused?
-				// If so, exit.
-				if s == "enter" && m.focusIndex == len(m.inputs) {
-					entry := EntryRow{}
-					//Testing with local copy incase pointer edits data.
-					if err := entry.FillData(m.inputs); err != nil {
-						m.errBuilder = err.Error()
-						submitFailed = true
-						break
+				// Set focus to next input
+				case "enter", "up", "down", "left", "right":
+					s := msg.String()
+
+					// Did the user press enter while the submit button was focused?
+					// If so, exit.
+					if s == "enter" && m.focusIndex == len(m.inputs) {
+						entry := EntryRow{}
+						//Testing with local copy incase pointer edits data.
+						if err := entry.FillData(m.inputs); err != nil {
+							m.errBuilder = err.Error()
+							submitFailed = true
+							break
+						}
+						if err := db.SaveEntry(entry); err != nil {
+							submitFailed = true
+						} else {
+							submitFailed = false
+							m.resetState()
+						}
+					} else if s == "enter" && m.focusIndex == len(m.inputs)+1 {
+						line, err := ImportWorklog()
+						if err != nil {
+							submitFailed = true
+							m.errBuilder = err.Error() + " " + strconv.Itoa(line)
+						}
+					} else if s == "enter" && m.focusIndex == len(m.inputs)+2 {
+						err := db.QueryAndExport()
+						if err != nil {
+							log.Println(err)
+						}
 					}
-					if err := db.SaveEntry(entry); err != nil {
-						submitFailed = true
-					} else {
-						submitFailed = false
-						m.resetState()
+
+					// Cycle cursor position in input
+					if m.focusIndex <= len(m.inputs)-1 && s == "right" {
+						m.inputsPos[m.focusIndex] += 1
+						if m.inputsPos[m.focusIndex] < 0 {
+							m.inputsPos[m.focusIndex] = 0
+						}
+						m.inputs[m.focusIndex].SetCursor(m.inputsPos[m.focusIndex])
+					} else if m.focusIndex <= len(m.inputs)-1 && s == "left" {
+						m.inputsPos[m.focusIndex] -= 1
+						if m.inputsPos[m.focusIndex] > len(m.inputs[m.focusIndex].Value()) {
+							m.inputsPos[m.focusIndex] = len(m.inputs[m.focusIndex].Value()) - 1
+						}
+						m.inputs[m.focusIndex].SetCursor(m.inputsPos[m.focusIndex])
 					}
-				} else if s == "enter" && m.focusIndex == len(m.inputs)+1 {
-					line, err := ImportWorklog()
-					if err != nil {
-						submitFailed = true
-						m.errBuilder = err.Error() + " " + strconv.Itoa(line)
+
+					// Cycle indexes
+					if s == "up" {
+						m.focusIndex--
+					} else if s == "down" {
+						m.focusIndex++
 					}
-				} else if s == "enter" && m.focusIndex == len(m.inputs)+2 {
-					err := db.QueryAndExport()
-					if err != nil {
-						log.Println(err)
+
+					if m.focusIndex > len(m.inputs)+2 {
+						m.focusIndex = 0
+					} else if m.focusIndex < 0 {
+						m.focusIndex = len(m.inputs) + 2
 					}
+
+					cmds := make([]tea.Cmd, len(m.inputs))
+					for i := 0; i <= len(m.inputs)-1; i++ {
+						if i == m.focusIndex {
+							// Set focused state
+							cmds[i] = m.inputs[i].Focus()
+							m.inputs[i].PromptStyle = focusedStyle
+							m.inputs[i].TextStyle = focusedStyle
+							continue
+						}
+						// Remove focused state
+						m.inputs[i].Blur()
+						m.inputs[i].PromptStyle = noStyle
+						m.inputs[i].TextStyle = noStyle
+					}
+					return m, tea.Batch(cmds...)
 				}
+			} else {
+				m.textarea.Focus()
+				switch msg.String() {
+				case "ctrl+shift+left", "ctrl+shift+right":
+					m.substate = ListView
 
-				// Cycle cursor position in input
-				if m.focusIndex <= len(m.inputs)-1 && s == "right" {
-					m.inputsPos[m.focusIndex] += 1
-					if m.inputsPos[m.focusIndex] < 0 {
-						m.inputsPos[m.focusIndex] = 0
-					}
-					m.inputs[m.focusIndex].SetCursor(m.inputsPos[m.focusIndex])
-				} else if m.focusIndex <= len(m.inputs)-1 && s == "left" {
-					m.inputsPos[m.focusIndex] -= 1
-					if m.inputsPos[m.focusIndex] > len(m.inputs[m.focusIndex].Value()) {
-						m.inputsPos[m.focusIndex] = len(m.inputs[m.focusIndex].Value()) - 1
-					}
-					m.inputs[m.focusIndex].SetCursor(m.inputsPos[m.focusIndex])
-				}
+				case "ctrl+c":
+					return m, tea.Quit
 
-				// Cycle indexes
-				if s == "up" {
-					m.focusIndex--
-				} else if s == "down" {
-					m.focusIndex++
+				case "tab":
+					m.ListUpdate()
 				}
-
-				if m.focusIndex > len(m.inputs)+2 {
-					m.focusIndex = 0
-				} else if m.focusIndex < 0 {
-					m.focusIndex = len(m.inputs) + 2
-				}
-
-				cmds := make([]tea.Cmd, len(m.inputs))
-				for i := 0; i <= len(m.inputs)-1; i++ {
-					if i == m.focusIndex {
-						// Set focused state
-						cmds[i] = m.inputs[i].Focus()
-						m.inputs[i].PromptStyle = focusedStyle
-						m.inputs[i].TextStyle = focusedStyle
-						continue
-					}
-					// Remove focused state
-					m.inputs[i].Blur()
-					m.inputs[i].PromptStyle = noStyle
-					m.inputs[i].TextStyle = noStyle
-				}
-				return m, tea.Batch(cmds...)
 			}
 		}
 		// Handle character input and blinking
@@ -747,11 +793,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *model) updateInputs(msg tea.Msg) tea.Cmd {
 	cmds := make([]tea.Cmd, len(m.inputs))
 	loginCmds := make([]tea.Cmd, len(m.loginInputs))
+	var textareaCmd tea.Cmd
 	// Only text inputs with Focus() set will respond, so it's safe to simply
 	// update all of them here without any further logic.
 	if m.state == New {
-		for i := range m.inputs {
-			m.inputs[i], cmds[i] = m.inputs[i].Update(msg)
+		if m.substate == ListView {
+			for i := range m.inputs {
+				m.inputs[i], cmds[i] = m.inputs[i].Update(msg)
+			}
+		} else {
+			m.textarea, textareaCmd = m.textarea.Update(msg)
+			cmds = append(cmds, textareaCmd)
 		}
 	} else if m.state == Modify {
 		for i := range m.modInputs {
@@ -762,7 +814,6 @@ func (m *model) updateInputs(msg tea.Msg) tea.Cmd {
 			m.loginInputs[i], loginCmds[i] = m.loginInputs[i].Update(msg)
 		}
 	}
-
 	return tea.Batch(cmds...)
 }
 
@@ -776,10 +827,12 @@ func (m model) View() string {
 		}
 	case New:
 		useHighPerformanceRenderer = false
+		var s string
+		var n string
 		for i := range m.inputs {
-			b.WriteString(m.inputs[i].View())
+			s += m.inputs[i].View()
 			if i < len(m.inputs)-1 {
-				b.WriteRune('\n')
+				s += "\n" //b.WriteRune('\n')
 			}
 		}
 		button := blurImport
@@ -794,7 +847,16 @@ func (m model) View() string {
 		if m.focusIndex == len(m.inputs)+2 {
 			button3 = focusExport
 		}
-		fmt.Fprintf(&b, "\n\n%s\t\t%s\t\t%s\n\n", button2, button, button3)
+		s += fmt.Sprintf("\n\n%s\t\t%s\t\t%s\n\n", button2, button, button3)
+		n += fmt.Sprintf(
+			"Notes for current entry.\n\n%s",
+			m.textarea.View(),
+		) + "\n\n"
+		if m.substate == ListView {
+			b.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, focusedModelStyle.Render(s), modelStyle.Render(n)))
+		} else {
+			b.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, modelStyle.Render(s), focusedModelStyle.Render(n)))
+		}
 
 	case Get:
 		useHighPerformanceRenderer = false
@@ -857,11 +919,11 @@ func (m model) View() string {
 		}
 		fmt.Fprintf(&b, "\n\n%s\t%s\n\n", button, button2)
 	}
-	b.WriteString(helpStyle.Render(fmt.Sprintf("Version: %s\t rev: %s\n", version, gitCommit)))
+	b.WriteString(helpStyle.Render(fmt.Sprintf("\nVersion: %s\t rev: %s\n", version, gitCommit)))
 	if submitFailed {
 		b.WriteString(helpStyle.Render(m.errBuilder))
 	} else {
-		b.WriteString(helpStyle.Render(fmt.Sprintf("\n list cur idx: %d list len: %d last id: %d focus idx: %d", m.list.Index(), len(m.list.Items()), m.id, m.focusIndex)))
+		b.WriteString(helpStyle.Render(fmt.Sprintf("\n substate: %d list len: %d last id: %d focus idx: %d", m.substate, len(m.list.Items()), m.id, m.focusIndex)))
 	}
 	submitFailed = false
 
@@ -878,6 +940,7 @@ func (m *model) resetState() {
 	m.inputs[endTime].SetValue(fmt.Sprintf("%v", t.Format("15:04")))
 	m.inputsPos[date] = len(m.inputs[date].Value())
 	m.inputsPos[endTime] = len(m.inputs[endTime].Value())
+	m.textarea.Reset()
 }
 
 func (m *model) resetModState() {
