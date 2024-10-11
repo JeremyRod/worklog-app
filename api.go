@@ -133,11 +133,11 @@ var TaskList TaskListResp
 
 // Alter this function to run later
 func doHTTP(username string, password string) error {
-	var fr *os.File
-	var err error
-	if fr, err = os.Create("authresp.json"); err != nil {
-		panic(err)
-	}
+	// var fr *os.File
+	// var err error
+	// if fr, err = os.Create("authresp.json"); err != nil {
+	// 	panic(err)
+	// }
 	// for this to work i think I need the company ID and potentially the API_KEY
 	user := Auth{Username: username, Password: password, DeviceName: "pc", DeviceID: "123456789987654321", CompanyID: "boostdesign", Lang: "eng", Request: struct{}{}}
 	if runtime.GOOS == "windows" {
@@ -156,11 +156,11 @@ func doHTTP(username string, password string) error {
 		log.Fatalln(err)
 	}
 	//We Read the response body on the line below.
-	encr := json.NewEncoder(fr)
+	// encr := json.NewEncoder(fr)
 	decoder := json.NewDecoder(resp.Body)
 	Authenticate = AuthResp{}
 	decoder.Decode(&Authenticate)
-	encr.Encode(&Authenticate)
+	// encr.Encode(&Authenticate)
 
 	err = verifyStatus(StatusCode(Authenticate.StatusCode), true)
 	// body, err := io.ReadAll(resp.Body)
@@ -173,11 +173,11 @@ func doHTTP(username string, password string) error {
 // For submitting new tasks
 func DoTaskSubmit(entries ...EntryRow) error {
 	// Check misuse
-	var fr *os.File
-	var err error
-	if fr, err = os.Create("modifyresp.json"); err != nil {
-		panic(err)
-	}
+	// var fr *os.File
+	// var err error
+	// if fr, err = os.Create("modifyresp.json"); err != nil {
+	// 	panic(err)
+	// }
 
 	if len(entries) == 0 {
 		return fmt.Errorf("no entries pass in")
@@ -213,8 +213,8 @@ func DoTaskSubmit(entries ...EntryRow) error {
 		respJson := ModifyResp{}
 		decoder := json.NewDecoder(resp.Body)
 		decoder.Decode(&respJson)
-		encr := json.NewEncoder(fr)
-		encr.Encode(&respJson)
+		//encr := json.NewEncoder(fr)
+		//encr.Encode(&respJson)
 
 		//check for task submit status code
 		err = verifyStatus(StatusCode(respJson.StatusCode), false)
@@ -230,11 +230,11 @@ func DoTaskSubmit(entries ...EntryRow) error {
 
 // For modifying an already submitted task.
 func DoTaskModify(entry EntryRow, id int) {
-	var fr *os.File
-	var err error
-	if fr, err = os.Create("modify2resp.json"); err != nil {
-		panic(err)
-	}
+	// var fr *os.File
+	// var err error
+	// if fr, err = os.Create("modify2resp.json"); err != nil {
+	// 	panic(err)
+	// }
 	dur := fmt.Sprintf("%02d:%02d:%02d", int(entry.entry.hours.Hours()), int(entry.entry.hours.Minutes())%60, int(entry.entry.hours.Seconds())%60)
 	compDate := formatISO8601(entry)
 	postBody, _ := json.Marshal(map[string]any{
@@ -259,8 +259,8 @@ func DoTaskModify(entry EntryRow, id int) {
 	respJson := ModifyResp{}
 	decoder := json.NewDecoder(resp.Body)
 	decoder.Decode(&respJson)
-	encr := json.NewEncoder(fr)
-	encr.Encode(&respJson)
+	//encr := json.NewEncoder(fr)
+	//encr.Encode(&respJson)
 
 	err = verifyStatus(StatusCode(respJson.StatusCode), false)
 	if err != nil {
