@@ -305,6 +305,7 @@ func (d *Database) OpenDatabase() error {
 	d.CreateDatabase()
 
 	d.CreateEventDatabase()
+	d.AlterTable()
 	//defer row.Close()
 	return nil
 }
@@ -365,6 +366,49 @@ func (d *Database) CreateEventDatabase() error {
 		//return fmt.Errorf("db stmt fail %q: %s", err, sqlStmt)
 	}
 	log.Println("Table 'users' created successfully (or already exists)")
+	return nil
+}
+
+// Check if table has the notes column and add if not
+func (d *Database) AlterTable() error {
+	query := "PRAGMA table_info(worklog);"
+	rows, err := d.db.Query(query)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	var exists bool
+	for rows.Next() {
+		var cid int
+		var name, ctype string
+		var notnull, pk int
+		var dfltValue sql.NullString
+
+		// Scan each row from the table schema
+		err = rows.Scan(&cid, &name, &ctype, &notnull, &dfltValue, &pk)
+		if err != nil {
+			return err
+		}
+
+		// Check if the column exists
+		if name == "notes" {
+			exists = true
+			break
+		}
+	}
+
+	if !exists {
+		// Add the column since it doesn't exist
+		query := "ALTER TABLE worklog ADD COLUMN notes TEXT;"
+		_, err = d.db.Exec(query)
+		if err != nil {
+			return err
+		}
+		log.Println("Column notes added to table worklog")
+	} else {
+		log.Println("Column notes already exists in table worklog")
+	}
 	return nil
 }
 
