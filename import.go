@@ -124,5 +124,4 @@ func ImportWorklog() (int, error) {
 		}
 		// fmt.Println(lineNum)
 	}
-	return -1, nil
 }
