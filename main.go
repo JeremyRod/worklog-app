@@ -31,12 +31,17 @@ type model struct {
 	inputs     []textinput.Model // items on the to-do list
 	focusIndex int               // which to-do list item our cursor is pointing at
 	inputsPos  []int             //array to track cursor pos for each input
+	// New Notes text area
+	textarea textarea.Model
 
 	// Modify inputs
 	modInputs     []textinput.Model // items for the modify list, same as the new list.
 	modFocusIndex int               // Focus index for Modify List
 	modRowID      int
+	modInputsPos  []int     //array to track cursor pos for each input
 	currentDate   time.Time // Date to get entries from
+	// Modify Notes text area
+	modtextarea textarea.Model
 
 	// Summary View
 	sumContent string
@@ -52,15 +57,12 @@ type model struct {
 	// Retreived tasks list view
 	listTask list.Model
 	choice   string
-	taskDone bool // Use this to make the check loop wait for the user to choose a task
+	// taskDone bool // Use this to make the check loop wait for the user to choose a task
 
 	// Login view for uploads
 	loginInputs     []textinput.Model
 	loginFocusIndex int
 	formLogged      bool
-
-	// Notes text area
-	textarea textarea.Model
 
 	// TODO: logger for error logging, do rotations and nice logging later
 
@@ -189,15 +191,16 @@ const (
 
 func initialModel() model {
 	m := model{
-		inputs:      make([]textinput.Model, submit),
-		modInputs:   make([]textinput.Model, submit),
-		loginInputs: make([]textinput.Model, cancel), // Only up to cancel since only two are inputs, rest are buttons.
-		inputsPos:   make([]int, submit),
-		list:        list.Model{},
-		state:       New,
-		substate:    ListView,
-		id:          0,
-		currentDate: time.Now(),
+		inputs:       make([]textinput.Model, submit),
+		modInputs:    make([]textinput.Model, submit),
+		loginInputs:  make([]textinput.Model, cancel), // Only up to cancel since only two are inputs, rest are buttons.
+		inputsPos:    make([]int, submit),
+		modInputsPos: make([]int, submit),
+		list:         list.Model{},
+		state:        New,
+		substate:     ListView,
+		id:           0,
+		currentDate:  time.Now(),
 	}
 
 	var t textinput.Model
@@ -212,6 +215,7 @@ func initialModel() model {
 	ti.Placeholder = "Add notes here...."
 	ti.CharLimit = 2000
 	m.textarea = ti
+	m.modtextarea = ti
 
 	for i := range m.inputs {
 		t = textinput.New()
@@ -407,6 +411,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.modInputs[endTime].SetValue(item.entry.endTime.String())
 				m.modInputs[hours].SetValue(item.entry.hours.String()[:len(item.entry.hours.String())-2])
 				m.modRowID = item.entryId
+				m.modtextarea.SetValue(item.entry.notes)
 				m.state = Modify
 				return m, tea.Batch(cmds...)
 
@@ -516,7 +521,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					if s == "enter" && m.focusIndex == len(m.inputs) {
 						entry := EntryRow{}
 						//Testing with local copy incase pointer edits data.
-						if err := entry.FillData(m.inputs); err != nil {
+						if err := entry.FillData(&m); err != nil {
 							m.errBuilder = err.Error()
 							submitFailed = true
 							break
@@ -606,114 +611,153 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			h, v := docStyle.GetFrameSize()
 			m.winH = msg.Height - v
 			m.winW = msg.Width - h
-
 		case tea.KeyMsg:
-			switch msg.String() {
-			case "ctrl+i": // Switch back to New entry screen.
-				m.state = New
+			if m.substate == ListView {
+				switch msg.String() {
+				case "ctrl+i": // Switch back to New entry screen.
+					m.state = New
 
-			case "ctrl+c":
-				return m, tea.Quit
+				case "ctrl+c":
+					return m, tea.Quit
 
-			case "tab":
-				items := []list.Item{}
-				m.list = list.New(items, list.NewDefaultDelegate(), 0, 0)
-				m.list.Title = "Worklog Entries"
-				//m.id = 0
-				m.resetModState()
-				m.ListUpdate()
+				case "tab":
+					items := []list.Item{}
+					m.list = list.New(items, list.NewDefaultDelegate(), 0, 0)
+					m.list.Title = "Worklog Entries"
+					m.id = 0
+					m.resetModState()
+					m.ListUpdate()
 
-			case "enter", "up", "down", "left", "right":
-				s := msg.String()
-				if s == "enter" && m.modFocusIndex == len(m.modInputs) {
-					entry := EntryRow{}
-					//Testing with local copy incase pointer edits data.
-					if err := entry.FillData(m.modInputs); err != nil {
-						m.errBuilder = err.Error()
-						submitFailed = true
-						break
-					}
-					entry.entryId = m.modRowID
-					if err := db.ModifyEntry(entry); err != nil {
-						submitFailed = true
-					}
-					m.modRowID = 0
-					m.state = Get
+				case "ctrl+shift+left", "ctrl+shift+right":
+					m.substate = NotesView
 
-				} else if s == "enter" && m.modFocusIndex == len(m.modInputs)+1 {
-					if err := db.DeleteEntry(m.modRowID); err != nil {
-						log.Println(err)
-					}
-					m.modRowID = 0
-					m.state = Get
-
-				} else if s == "enter" && m.modFocusIndex == len(m.modInputs)+2 {
-					// scoro upload
-					entry := EntryRow{}
-					if err := entry.FillData(m.modInputs); err != nil {
-						m.errBuilder = err.Error()
-						submitFailed = true
-						break
-					}
-					entry.entryId = m.modRowID
-					// Get user token
-					check := LoginGetTasks(&m)
-					if check {
-						m.state = Login
-						log.Println("Login failed/need creds")
-						break
-					}
-					ok, err := CheckEventCodeMap(&m, entry)
-					if err != nil {
-						m.errBuilder += err.Error()
-						break
-					}
-					if ok {
-						// Get user token
-						if err := DoTaskSubmit(entry); err != nil {
-							m.errBuilder += err.Error()
+				case "enter", "up", "down", "left", "right":
+					s := msg.String()
+					if s == "enter" && m.modFocusIndex == len(m.modInputs) {
+						entry := EntryRow{}
+						//Testing with local copy incase pointer edits data.
+						if err := entry.ModFillData(&m); err != nil {
+							m.errBuilder = err.Error()
+							submitFailed = true
+							break
 						}
-						// if check event codes needs some interaction, dont go to get state.
+						entry.entryId = m.modRowID
+						if err := db.ModifyEntry(entry); err != nil {
+							submitFailed = true
+						}
+						m.id = 0
+						m.modRowID = 0
+						m.resetModState()
+						m.ListUpdate()
+						m.state = Get
+
+					} else if s == "enter" && m.modFocusIndex == len(m.modInputs)+1 {
+						if err := db.DeleteEntry(m.modRowID); err != nil {
+							log.Println(err)
+							break
+						}
+						//m.id = 0
+						m.resetModState()
+						m.ListUpdate()
 						m.modRowID = 0
 						m.state = Get
-					}
-				} else if s == "enter" && m.modFocusIndex == len(m.modInputs)+3 {
-					entry := EntryRow{}
-					if err := entry.FillData(m.modInputs); err != nil {
-						m.errBuilder = err.Error()
-						submitFailed = true
-						break
-					}
-					db.DeleteLink(entry.entry.projCode)
-				}
 
-				// Cycle indexes
-				if s == "up" || s == "left" {
-					m.modFocusIndex--
-				} else {
-					m.modFocusIndex++
-				}
-
-				if m.modFocusIndex > len(m.modInputs)+3 {
-					m.modFocusIndex = 0
-				} else if m.modFocusIndex < 0 {
-					m.modFocusIndex = len(m.modInputs) + 3
-				}
-				cmds := make([]tea.Cmd, len(m.modInputs))
-				for i := 0; i <= len(m.modInputs)-1; i++ {
-					if i == m.modFocusIndex {
-						// Set focused state
-						cmds[i] = m.modInputs[i].Focus()
-						m.modInputs[i].PromptStyle = focusedStyle
-						m.modInputs[i].TextStyle = focusedStyle
-						continue
+					} else if s == "enter" && m.modFocusIndex == len(m.modInputs)+2 {
+						// scoro upload
+						entry := EntryRow{}
+						if err := entry.ModFillData(&m); err != nil {
+							m.errBuilder = err.Error()
+							submitFailed = true
+							break
+						}
+						entry.entryId = m.modRowID
+						// Get user token
+						check := LoginGetTasks(&m)
+						if check {
+							m.state = Login
+							log.Println("Login failed/need creds")
+							break
+						}
+						ok, err := CheckEventCodeMap(&m, entry)
+						if err != nil {
+							m.errBuilder += err.Error()
+							break
+						}
+						if ok {
+							// Get user token
+							if err := DoTaskSubmit(entry); err != nil {
+								m.errBuilder += err.Error()
+							}
+							// if check event codes needs some interaction, dont go to get state.
+							m.modRowID = 0
+							m.state = Get
+						}
+						m.resetModState()
+						m.ListUpdate()
+					} else if s == "enter" && m.modFocusIndex == len(m.modInputs)+3 {
+						entry := EntryRow{}
+						if err := entry.ModFillData(&m); err != nil {
+							m.errBuilder = err.Error()
+							submitFailed = true
+							break
+						}
+						db.DeleteLink(entry.entry.projCode)
 					}
-					// Remove focused state
-					m.modInputs[i].Blur()
-					m.modInputs[i].PromptStyle = noStyle
-					m.modInputs[i].TextStyle = noStyle
+
+					// Cycle cursor position in input
+					if m.modFocusIndex <= len(m.modInputs)-1 && s == "right" {
+						m.modInputsPos[m.modFocusIndex] += 1
+						if m.modInputsPos[m.modFocusIndex] < 0 {
+							m.modInputsPos[m.modFocusIndex] = 0
+						}
+						m.modInputs[m.modFocusIndex].SetCursor(m.modInputsPos[m.modFocusIndex])
+					} else if m.modFocusIndex <= len(m.modInputs)-1 && s == "left" {
+						m.modInputsPos[m.modFocusIndex] -= 1
+						if m.modInputsPos[m.modFocusIndex] > len(m.modInputs[m.modFocusIndex].Value()) {
+							m.modInputsPos[m.modFocusIndex] = len(m.modInputs[m.modFocusIndex].Value()) - 1
+						}
+						m.modInputs[m.modFocusIndex].SetCursor(m.modInputsPos[m.modFocusIndex])
+					}
+					// Cycle indexes
+					if s == "up" {
+						m.modFocusIndex--
+					} else if s == "down" {
+						m.modFocusIndex++
+					}
+
+					if m.modFocusIndex > len(m.modInputs)+3 {
+						m.modFocusIndex = 0
+					} else if m.modFocusIndex < 0 {
+						m.modFocusIndex = len(m.modInputs) + 3
+					}
+					cmds := make([]tea.Cmd, len(m.modInputs))
+					for i := 0; i <= len(m.modInputs)-1; i++ {
+						if i == m.modFocusIndex {
+							// Set focused state
+							cmds[i] = m.modInputs[i].Focus()
+							m.modInputs[i].PromptStyle = focusedStyle
+							m.modInputs[i].TextStyle = focusedStyle
+							continue
+						}
+						// Remove focused state
+						m.modInputs[i].Blur()
+						m.modInputs[i].PromptStyle = noStyle
+						m.modInputs[i].TextStyle = noStyle
+					}
+					return m, tea.Batch(cmds...)
 				}
-				return m, tea.Batch(cmds...)
+			} else {
+				m.modtextarea.Focus()
+				switch msg.String() {
+				case "ctrl+shift+left", "ctrl+shift+right":
+					m.substate = ListView
+
+				case "ctrl+c":
+					return m, tea.Quit
+
+				case "tab":
+					m.ListUpdate()
+				}
 			}
 		}
 		cmd = m.updateInputs(msg)
@@ -806,8 +850,13 @@ func (m *model) updateInputs(msg tea.Msg) tea.Cmd {
 			cmds = append(cmds, textareaCmd)
 		}
 	} else if m.state == Modify {
-		for i := range m.modInputs {
-			m.modInputs[i], cmds[i] = m.modInputs[i].Update(msg)
+		if m.substate == ListView {
+			for i := range m.inputs {
+				m.modInputs[i], cmds[i] = m.modInputs[i].Update(msg)
+			}
+		} else {
+			m.modtextarea, textareaCmd = m.modtextarea.Update(msg)
+			cmds = append(cmds, textareaCmd)
 		}
 	} else if m.state == Login {
 		for i := range m.loginInputs {
@@ -869,11 +918,15 @@ func (m model) View() string {
 		}
 
 	case Modify:
+		var (
+			n string
+			s string
+		)
 		useHighPerformanceRenderer = false
 		for i := range m.modInputs {
-			b.WriteString(m.modInputs[i].View())
+			s += m.modInputs[i].View()
 			if i < len(m.modInputs)-1 {
-				b.WriteRune('\n')
+				s += "\n"
 			}
 		}
 
@@ -893,8 +946,16 @@ func (m model) View() string {
 		if m.modFocusIndex == len(m.modInputs)+3 {
 			button4 = focusUnlink
 		}
-		fmt.Fprintf(&b, "\n\n%s\t%s\t%s\t%s\n\n", button, button2, button3, button4)
-
+		s += fmt.Sprintf("\n\n%s\t%s\t%s\t%s\n\n", button, button2, button3, button4)
+		n += fmt.Sprintf(
+			"Notes for current entry.\n\n%s",
+			m.modtextarea.View(),
+		) + "\n\n"
+		if m.substate == ListView {
+			b.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, focusedModelStyle.Render(s), modelStyle.Render(n)))
+		} else {
+			b.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, modelStyle.Render(s), focusedModelStyle.Render(n)))
+		}
 	case Summary:
 		// if !m.ready {
 		// 	b.WriteString("\n  Initializing...")
@@ -948,6 +1009,7 @@ func (m *model) resetModState() {
 	for v := range m.inputs {
 		m.modInputs[v].Reset()
 	}
+	m.modtextarea.Reset()
 }
 
 func (m *model) resetLoginState() {
@@ -1019,6 +1081,9 @@ func (d *TaskListResp) constructTaskList() []list.Item {
 }
 
 func (m *model) ListUpdate() error {
+	items := []list.Item{}
+	m.list = list.New(items, list.NewDefaultDelegate(), 0, 0)
+	m.list.Title = "Worklog Entries"
 	e, err := db.QueryEntries(m)
 	if err != nil {
 		return fmt.Errorf("%s", err)
