@@ -9,7 +9,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/charmbracelet/bubbles/textinput"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -24,6 +23,7 @@ type Entry struct {
 	startTime time.Time
 	endTime   time.Time
 	date      time.Time
+	notes     string
 }
 
 type EntryRow struct {
@@ -38,7 +38,7 @@ func (d *Database) SaveEntry(entry EntryRow) error {
 	if err != nil {
 		log.Println(err)
 	}
-	stmt, err := tx.Prepare("insert into worklog(hours, desc, projcode, starttime, endtime, date) values(?, ?, ?, ?, ?, ?)")
+	stmt, err := tx.Prepare("insert into worklog(hours, desc, projcode, starttime, endtime, date, notes) values(?, ?, ?, ?, ?, ?, ?)")
 
 	if err != nil {
 		log.Fatal(err)
@@ -46,7 +46,7 @@ func (d *Database) SaveEntry(entry EntryRow) error {
 	defer stmt.Close()
 	_, err = stmt.Exec(entry.entry.hours,
 		entry.entry.desc, entry.entry.projCode, entry.entry.startTime,
-		entry.entry.endTime, entry.entry.date)
+		entry.entry.endTime, entry.entry.date, entry.entry.notes)
 	if err != nil {
 		log.Println(err)
 		return err
@@ -87,7 +87,9 @@ func (d *Database) ModifyEntry(e EntryRow) error {
 				projcode = ?, 
 				date = ?, 
 				starttime = ?, 
-				endtime = ? where id = ?;`
+				endtime = ?, 
+				notes = ? 
+			where id = ?;`
 	tx, err := d.db.Begin()
 	if err != nil {
 		log.Println(err)
@@ -99,7 +101,7 @@ func (d *Database) ModifyEntry(e EntryRow) error {
 	defer stmt.Close()
 	_, err = stmt.Exec(e.entry.desc, e.entry.hours,
 		e.entry.projCode, e.entry.date, e.entry.startTime,
-		e.entry.endTime, e.entryId)
+		e.entry.endTime, e.entry.notes, e.entryId)
 	if err != nil {
 		log.Println(err)
 	}
@@ -148,14 +150,14 @@ func (d *Database) QuerySummary(m *model) ([]EntryRow, error) {
 
 func (d *Database) QueryEntries(m *model) ([]EntryRow, error) {
 	var (
-		rows *sql.Rows
-		err  error
+		rows  *sql.Rows
+		err   error
+		notes sql.NullString
 	)
-
 	if m.id == 0 {
-		rows, err = d.db.Query("select date, id, projcode, hours, desc from worklog order by id desc limit 10")
+		rows, err = d.db.Query("select date, id, projcode, hours, desc, notes from worklog order by id desc limit 10")
 	} else {
-		rows, err = d.db.Query("select date, id, projcode, hours, desc from worklog order by id desc limit 10 offset ?", m.maxId-m.id+1)
+		rows, err = d.db.Query("select date, id, projcode, hours, desc, notes from worklog order by id desc limit 10 offset ?", m.maxId-m.id+1)
 	}
 	if err != nil {
 		log.Fatal(err)
@@ -164,11 +166,16 @@ func (d *Database) QueryEntries(m *model) ([]EntryRow, error) {
 	ents := []EntryRow{}
 	for rows.Next() {
 		ent := EntryRow{}
-		err = rows.Scan(&ent.entry.date, &ent.entryId, &ent.entry.projCode, &ent.entry.hours, &ent.entry.desc)
+		err = rows.Scan(&ent.entry.date, &ent.entryId, &ent.entry.projCode, &ent.entry.hours, &ent.entry.desc, &notes)
 		if err != nil {
 			log.Fatal(err)
 		}
-		//fmt.Println(ent.entryId, ent.entry.projCode)
+		// Check if newColumn is valid (non-NULL) and print it
+		ent.entry.notes = ""
+		if notes.Valid {
+			ent.entry.notes = notes.String
+			log.Println(notes)
+		}
 		ents = append(ents, ent)
 		if m.id == 0 {
 			m.maxId = ent.entryId
@@ -192,7 +199,7 @@ func (d *Database) QueryAndExport() error {
 	if err != nil {
 		return err
 	}
-	rows, err = d.db.Query("select date, id, projcode, hours, desc from worklog order by date ASC")
+	rows, err = d.db.Query("select date, id, projcode, hours, desc, notes from worklog order by date ASC")
 	if err != nil {
 		log.Fatal(err)
 		return err
@@ -235,7 +242,7 @@ func (d *Database) QueryEntry(e EntryRow) (EntryRow, error) {
 		err  error
 	)
 
-	rows, _ = d.db.Query("select date, id, projcode, hours, desc, starttime, endtime from worklog where id = %d", e.entryId)
+	rows, _ = d.db.Query("select date, id, projcode, hours, desc, starttime, endtime, notes from worklog where id = %d", e.entryId)
 	defer rows.Close()
 	var ent EntryRow
 	for rows.Next() {
@@ -262,7 +269,8 @@ func (d *Database) CreateDatabase() error {
 		starttime TIME NOT NULL, 
 		endtime TIME, 
 		projcode TEXT NOT NULL, 
-		date DATE NOT NULL
+		date DATE NOT NULL,
+		notes TEXT,
 	);`
 	_, err := d.db.Exec(sqlStmt)
 	if err != nil {
@@ -314,35 +322,81 @@ func (d *Database) CloseDatabase() {
 	d.db.Close()
 }
 
-func (e *EntryRow) FillData(inputs []textinput.Model) error {
+func (e *EntryRow) FillData(m *model) error {
 	timeFmt := "15:04"
 	dateFmt := "02/01/2006"
 	var err error
-	e.entry.hours, err = time.ParseDuration(inputs[hours].Value())
-	if err != nil && inputs[hours].Value() != "" {
-		return fmt.Errorf("%s", err)
+	e.entry.hours, err = time.ParseDuration(m.inputs[hours].Value())
+	if err != nil && m.inputs[hours].Value() != "" {
+		log.Println(err)
+		return err
 	}
-	e.entry.startTime, err = time.Parse(timeFmt, inputs[startTime].Value())
+	e.entry.startTime, err = time.Parse(timeFmt, m.inputs[startTime].Value())
 	if err != nil && !e.entry.startTime.IsZero() {
-		return fmt.Errorf("%s", err)
+		log.Println(err)
+		return err
 	}
-	e.entry.endTime, err = time.Parse(timeFmt, inputs[endTime].Value())
+	e.entry.endTime, err = time.Parse(timeFmt, m.inputs[endTime].Value())
 	if err != nil && !e.entry.endTime.IsZero() {
-		return fmt.Errorf("%s", err)
+		log.Println(err)
+		return err
 	}
-	e.entry.date, err = time.Parse(dateFmt, inputs[date].Value())
+	e.entry.date, err = time.Parse(dateFmt, m.inputs[date].Value())
 	if err != nil {
-		return fmt.Errorf("%s", err)
+		log.Println(err)
+		return err
 	}
-	e.entry.projCode = inputs[code].Value()
-	e.entry.desc = inputs[desc].Value()
+	e.entry.projCode = m.inputs[code].Value()
+	e.entry.desc = m.inputs[desc].Value()
+	e.entry.notes = m.textarea.Value()
 
 	if !e.entry.startTime.IsZero() && !e.entry.endTime.IsZero() {
 		e.entry.hours = time.Duration(e.entry.endTime.Sub(e.entry.startTime))
 	}
 
 	// Now do some validation checks on projcode and hours to make sure they exist.
-	if e.entry.hours == 0 || e.entry.projCode == "" {
+	if e.entry.hours.Minutes() == 0 || e.entry.projCode == "" {
+		log.Println(e.entry.hours.Minutes(), e.entry.projCode)
+		return fmt.Errorf("empty hours or projcode, please check inputs")
+	}
+	return nil
+}
+
+func (e *EntryRow) ModFillData(m *model) error {
+	timeFmt := "15:04"
+	dateFmt := "02/01/2006"
+	var err error
+	e.entry.hours, err = time.ParseDuration(m.modInputs[hours].Value())
+	if err != nil && m.modInputs[hours].Value() != "" {
+		log.Println(err)
+		return err
+	}
+	e.entry.startTime, err = time.Parse(timeFmt, m.modInputs[startTime].Value())
+	if err != nil && !e.entry.startTime.IsZero() {
+		log.Println(err)
+		return err
+	}
+	e.entry.endTime, err = time.Parse(timeFmt, m.modInputs[endTime].Value())
+	if err != nil && !e.entry.endTime.IsZero() {
+		log.Println(err)
+		return err
+	}
+	e.entry.date, err = time.Parse(dateFmt, m.modInputs[date].Value())
+	if err != nil {
+		log.Println(err)
+		return err
+	}
+	e.entry.projCode = m.modInputs[code].Value()
+	e.entry.desc = m.modInputs[desc].Value()
+	e.entry.notes = m.modtextarea.Value()
+
+	if !e.entry.startTime.IsZero() && !e.entry.endTime.IsZero() {
+		e.entry.hours = time.Duration(e.entry.endTime.Sub(e.entry.startTime))
+	}
+
+	// Now do some validation checks on projcode and hours to make sure they exist.
+	if e.entry.hours.Minutes() == 0 || e.entry.projCode == "" {
+		log.Println(e.entry.hours.Minutes(), e.entry.projCode)
 		return fmt.Errorf("empty hours or projcode, please check inputs")
 	}
 	return nil
