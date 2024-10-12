@@ -4,6 +4,51 @@ A new worklog for my work
 This version of the app a gui using bubbletea 
 It is a local based versions with a local database (sqlite)
 
+# How to use the worklog
+Navigate the worklog with arrow keys for entry field and tab/enter to interact/navigate with pages.
+
+Ctrl+C on any page will close the app so make sure to save all data before closing.
+
+## New View 
+### How to enter new view?
+Default view when the app starts
+
+## List View
+### How to enter list view?
+Tab from New or Modify view to get to the list view.
+
+## Summary View
+### How to enter summary view?
+Press ctrl + p to enter summary view when in the list view
+
+## Modify View
+### How to enter modify view?
+Press enter on an item in the list view. 
+
+## Login 
+### Why login? 
+The login form takes in the users Scoro username and password and uses this to get a user_token, this is to avoid needing the api_key which some businesses might not want to provide to workers. 
+
+The login data is not saved at all and is only used to obtain auth. The user will need to login on every new session and may need to re-enter details if auth is considered stale in a long session. 
+
+If you do not want to enter login details, a .env file can be used to store these details for the worklog app to read from when required. 
+
+```
+SCOROUSER=jeremy.rodarellis@boostdesign.com.au
+SCOROPASSWORD=abc123
+```
+
+If this doesn't exist then the user will need to use the login form when prompted to upload
+
+## Notes
+### What are these used for 
+Some managers would prefer a short recap of the action taken in a time entry period for reporting. Some users want to document important notes and task issues/fixes. The notes portions will bridge that gap, the notes are a personal optional note taking field associated with the entry that will be saved but will not be uploaded with the entry when uploading to scoro, this will continue to be the description.
+
+
+User presses upload on an entry. If the event_id is unknown, the user will be prompted to select a Project/Event for all future project code (currently only for the current instance)
+This view should first prompt the user to enter their username and passwrod for scoro in to get a user token, another option can be using an env file to get the required details.
+
+If the Scoro task/bucket has changed after a Project code has been linked, the user can unlink and relink to a new task.
 
 ### Currently working on
 - ~~Make an edit view for each time entry~~
@@ -24,7 +69,8 @@ It is a local based versions with a local database (sqlite)
     - ~~Save in a map or in another table in the DB.~~
 - ~~Add versioning~~
 - ~~Export worklog ~~
-- Notes view
+- ~~Notes view~~
+
 
 ### Future Additions 
 - nicer error logging 
@@ -52,39 +98,5 @@ It is a local based versions with a local database (sqlite)
     - ~~Same format as old worklog for compatibility.~~
     - Check for common worklog syntax issues, resolve for importing.
 - Going to modify view, then tabbing back to list view hides items
-
-
-# How to use the worklog
-
-## Summary View
-### How to enter summary view?
-Press ctrl + p to enter summary view. 
-
-## Modify View
-### How to enter modify view?
-Press enter on an item in the list view. 
-
-## List View
-### How to enter list view?
-Tab from New or Modify view to get to the list view.
-
-## New View 
-### How to enter new view?
-Default view when the app starts
-
-## Scoro View
-### How to enter this view? 
-Current Iteration: 
-On boot of the program, it will look for an **user.env** (same dir as executable) file with the users scoro details, in the format:
-
-```
-SCOROUSER=jeremy.rodarellis@boostdesign.com.au
-SCOROPASSWORD=xxxxxx
-```
-
-If this doesn't exist then the user will need to use the login form when prompted to upload
-
-User presses upload on an entry. If the event_id is unknown, the user will be prompted to select a Project/Event for all future project code (currently only for the current instance)
-This view should first prompt the user to enter their username and passwrod for scoro in to get a user token, another option can be using an env file to get the required details.
-
-If the Scoro task/bucket has changed after a Project code has been linked, the user can unlink and relink to a new task.
+- Going to modify view then going back when past the first 10 items will index incorrectly
+- Going into modify view and back will forget the current list index.  
