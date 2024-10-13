@@ -146,7 +146,7 @@ var (
 func (e EntryRow) Title() string {
 	date := e.entry.date.Format("02/01/2006")
 	time := e.entry.hours.Hours()
-	return fmt.Sprintf("%d: Date: %v Project: %s Hours: %.2f", e.entryId, date, e.entry.projCode, time)
+	return fmt.Sprintf("Date: %v Project: %s Hours: %.2f", date, e.entry.projCode, time)
 }
 func (e EntryRow) Description() string { return e.entry.desc }
 func (e EntryRow) FilterValue() string { return e.entry.projCode }
@@ -527,9 +527,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						if err := db.SaveEntry(entry); err != nil {
 							submitFailed = true
 						} else {
+							// Here is probably the only place we want to reset the list since we need the new id from the database
+							// We also probably want to show the newest list at this point.
+							items := []list.Item{}
+							m.list = list.New(items, list.NewDefaultDelegate(), 0, 0)
 							submitFailed = false
 							m.resetState()
+							m.id = 0
+							m.ListUpdate()
 						}
+
 					} else if s == "enter" && m.focusIndex == len(m.inputs)+1 {
 						line, err := ImportWorklog()
 						if err != nil {
@@ -638,9 +645,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						entry.entryId = m.modRowID
 						if err := db.ModifyEntry(entry); err != nil {
 							submitFailed = true
+							break
 						}
 						m.modRowID = 0
 						m.resetModState()
+						// ent, err := db.QueryEntry(entry)
+						// if err != nil {
+						// 	log.Println(err)
+						// 	break
+						// }
+						m.list.SetItem(m.list.Index(), entry)
 						m.state = Get
 
 					} else if s == "enter" && m.modFocusIndex == len(m.modInputs)+1 {
