@@ -57,8 +57,7 @@ If the Scoro task/bucket has changed after a Project code has been linked, the u
 - ~~Summary Page for Days, easily show work completed.~~
 - ~~Scoro API integration~~
     - ~~Allow Submitting of Single entry~~
-    - Allow submitting of the weekly summary
-    - Provide form for user provided details to retreive user token.
+    - ~~Provide form for user provided details to retreive user token.~~
 - ~~Save map of projcode to event_id to database~~
 - ~~error logging~~
 - ~~delete links~~
@@ -70,33 +69,33 @@ If the Scoro task/bucket has changed after a Project code has been linked, the u
 - ~~Add versioning~~
 - ~~Export worklog ~~
 - ~~Notes view~~
-
+- Summary view revamp, format text a little better, change hours view to be hh:mm. 
+- Allow saving of a weeks entries from summary view.
 
 ### Future Additions 
 - nicer error logging 
 - error log file rotations?
 - Saving of user login and password details encrypted. 
 - Filepicker for importing.
+- Add ability to switch filter item (proj, desc).
+- Check for common worklog syntax issues, resolve for importing.
+- Future add ability to select a week to view.
 
 ### Known Bugs
 - ~~If deleting an entry list will not update until navigating away and back~~
 - ~~Fix formatting limitations for hours field.~~
-- fix bug with infinite scroll and more than 10 items in db.
+- ~~fix bug with infinite scroll and more than 10 items in db.~~
 - ~~Add save functionality for modify entry.~~ 
-- Add ability to switch filter item (proj, desc).
 - ~~Fix issue of modify values carrying over to next modify input.~~
 - ~~Look into issue with list and new page showing stale info.~~
 - ~~Create a summary view that will make it easy to copy entries to scoro.~~
 - ~~Summary view will either be a list of the weeks entries, or whatever is currently in the get list. Probably the week.~~
-    - Future add ability to select a week to view.
 - ~~Make summary view~~
-- Format Summary view nicely
 - ~~Allow importing and exporting of worklog txt file for storage and seeding.~~
     - ~~Currently only looks for files that have the same syntax as old worklog script.~~
     - Improvement to above would be a file picker
 - ~~Allow export of entries in data base to text file.~~
     - ~~Same format as old worklog for compatibility.~~
-    - Check for common worklog syntax issues, resolve for importing.
-- Going to modify view, then tabbing back to list view hides items
-- Going to modify view then going back when past the first 10 items will index incorrectly
-- Going into modify view and back will forget the current list index.  
+- ~~Going to modify view, then tabbing back to list view hides items~~
+- ~~Going to modify view then going back when past the first 10 items will index incorrectly~~
+- ~~Going into modify view and back will forget the current list index.~~
