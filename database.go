@@ -239,18 +239,25 @@ func (d *Database) QueryAndExport() error {
 
 func (d *Database) QueryEntry(e EntryRow) (EntryRow, error) {
 	var (
-		rows *sql.Rows
-		err  error
+		rows  *sql.Rows
+		err   error
+		notes sql.NullString
 	)
 	rows, _ = d.db.Query("select date, id, projcode, hours, desc, starttime, endtime, notes from worklog where id = %d", e.entryId)
 	defer rows.Close()
 	var ent EntryRow
 	for rows.Next() {
-		err = rows.Scan(&ent.entry.date, &ent.entryId, &ent.entry.projCode, &ent.entry.hours, &ent.entry.desc, &ent.entry.startTime, &ent.entry.endTime)
+		err = rows.Scan(&ent.entry.date, &ent.entryId, &ent.entry.projCode, &ent.entry.hours, &ent.entry.desc, &ent.entry.startTime, &ent.entry.endTime, &notes)
 		if err != nil {
 			log.Fatal(err)
 		}
 		//fmt.Println(ent.entryId, ent.entry.projCode)
+	}
+	// Check if newColumn is valid (non-NULL) and print it
+	ent.entry.notes = ""
+	if notes.Valid {
+		ent.entry.notes = notes.String
+		//log.Println(notes)
 	}
 	err = rows.Err()
 	if err != nil {
