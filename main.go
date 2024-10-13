@@ -315,7 +315,7 @@ func initialModel() model {
 		}
 		m.loginInputs[i] = t
 	}
-
+	m.ListUpdate()
 	m.cursorMode = cursor.CursorStatic
 	return m
 }
@@ -378,11 +378,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						log.Println(err)
 					}
 					m.modRowID = 0
-					m.id = 0
-					items = []list.Item{}
-					m.list = list.New(items, list.NewDefaultDelegate(), 0, 0)
-					m.list.Title = "Worklog Entries"
-					m.ListUpdate()
+					m.id -= 1
+					m.list.RemoveItem(m.list.Index())
 					m.state = Get
 				}
 
@@ -417,21 +414,22 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 				// db.ModifyEntry(item)
 			case "tab":
-				items := []list.Item{}
-				m.list = list.New(items, list.NewDefaultDelegate(), 0, 0)
-				m.list.Title = "Worklog Entries"
-				m.id = 0
+				// items := []list.Item{}
+				// m.list = list.New(items, list.NewDefaultDelegate(), 0, 0)
+				// m.list.Title = "Worklog Entries"
+				//m.id = 0
 				m.state = New
 			}
 		}
 		if m.list.Index() == len(m.list.Items())-1 && m.id != 1 {
-			e, err := db.QueryEntries(&m)
-			if err != nil {
-				return m, nil
-			}
-			for _, v := range e {
-				m.list.InsertItem(99999, v)
-			}
+			// e, err := db.QueryEntries(&m)
+			// if err != nil {
+			// 	return m, nil
+			// }
+			// for _, v := range e {
+			// 	m.list.InsertItem(99999, v)
+			// }
+			m.ListUpdate()
 		}
 		m.list, cmd = m.list.Update(msg)
 	} else if m.state == Summary {
@@ -448,7 +446,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "tab":
 				m.sumContent = ""
 				m.viewport.SetContent(m.sumContent)
-				m.ListUpdate()
+				m.state = Get
 			}
 
 		case tea.WindowSizeMsg:
@@ -504,7 +502,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				switch msg.String() {
 
 				case "tab":
-					m.ListUpdate()
+					m.state = Get
 
 				case "ctrl+shift+left", "ctrl+shift+right":
 					m.substate = NotesView
@@ -599,7 +597,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, tea.Quit
 
 				case "tab":
-					m.ListUpdate()
+					m.state = Get
 				}
 			}
 		}
@@ -621,12 +619,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, tea.Quit
 
 				case "tab":
-					items := []list.Item{}
-					m.list = list.New(items, list.NewDefaultDelegate(), 0, 0)
-					m.list.Title = "Worklog Entries"
-					m.id = 0
 					m.resetModState()
-					m.ListUpdate()
+					m.state = Get
 
 				case "ctrl+shift+left", "ctrl+shift+right":
 					m.substate = NotesView
@@ -645,21 +639,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						if err := db.ModifyEntry(entry); err != nil {
 							submitFailed = true
 						}
-						m.id = 0
 						m.modRowID = 0
 						m.resetModState()
-						m.ListUpdate()
 						m.state = Get
 
 					} else if s == "enter" && m.modFocusIndex == len(m.modInputs)+1 {
-						if err := db.DeleteEntry(m.modRowID); err != nil {
+						items := m.list.Items()
+						item := items[m.list.Index()].(EntryRow)
+						if err := db.DeleteEntry(item.entryId); err != nil {
 							log.Println(err)
-							break
 						}
-						//m.id = 0
-						m.resetModState()
-						m.ListUpdate()
 						m.modRowID = 0
+						m.id -= 1
+						m.resetModState()
+						m.list.RemoveItem(m.list.Index())
 						m.state = Get
 
 					} else if s == "enter" && m.modFocusIndex == len(m.modInputs)+2 {
@@ -693,7 +686,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							m.state = Get
 						}
 						m.resetModState()
-						m.ListUpdate()
 					} else if s == "enter" && m.modFocusIndex == len(m.modInputs)+3 {
 						entry := EntryRow{}
 						if err := entry.ModFillData(&m); err != nil {
@@ -756,7 +748,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, tea.Quit
 
 				case "tab":
-					m.ListUpdate()
+					m.state = Get
 				}
 			}
 		}
@@ -909,9 +901,6 @@ func (m model) View() string {
 
 	case Get:
 		useHighPerformanceRenderer = false
-		// if err := m.ListUpdate(); err != nil {
-		// 	b.WriteString(fmt.Sprintf("%v", err))
-		// }
 		_, err := b.WriteString(docStyle.Render(m.list.View()))
 		if err != nil {
 			b.WriteString(fmt.Sprintf("%v", err))
@@ -984,7 +973,7 @@ func (m model) View() string {
 	if submitFailed {
 		b.WriteString(helpStyle.Render(m.errBuilder))
 	} else {
-		b.WriteString(helpStyle.Render(fmt.Sprintf("\n substate: %d list len: %d last id: %d focus idx: %d", m.substate, len(m.list.Items()), m.id, m.focusIndex)))
+		b.WriteString(helpStyle.Render(fmt.Sprintf("\n substate: %d list idx: %d list len %d, last id: %d focus idx: %d", m.substate, m.list.Index(), len(m.list.Items()), m.id, m.focusIndex)))
 	}
 	submitFailed = false
 
@@ -1081,9 +1070,11 @@ func (d *TaskListResp) constructTaskList() []list.Item {
 }
 
 func (m *model) ListUpdate() error {
-	items := []list.Item{}
-	m.list = list.New(items, list.NewDefaultDelegate(), 0, 0)
-	m.list.Title = "Worklog Entries"
+	// Stop resetting the list. Append and keep index tracked.
+
+	// items := []list.Item{}
+	// m.list = list.New(items, list.NewDefaultDelegate(), 0, 0)
+	// m.list.Title = "Worklog Entries"
 	e, err := db.QueryEntries(m)
 	if err != nil {
 		return fmt.Errorf("%s", err)
@@ -1092,7 +1083,7 @@ func (m *model) ListUpdate() error {
 		m.list.InsertItem(99999, v)
 		//fmt.Println(v.entryId)
 	}
-	m.state = Get
+	// m.state = Get
 	//	fmt.Println(m.winW, m.winH)
 	m.list.SetSize(m.winW, m.winH)
 	return nil
