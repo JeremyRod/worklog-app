@@ -148,6 +148,7 @@ func (d *Database) QuerySummary(m *model) ([]EntryRow, error) {
 	return ents, nil
 }
 
+// TODO: fix this to make list construction work better
 func (d *Database) QueryEntries(m *model) ([]EntryRow, error) {
 	var (
 		rows  *sql.Rows
@@ -157,7 +158,7 @@ func (d *Database) QueryEntries(m *model) ([]EntryRow, error) {
 	if m.id == 0 {
 		rows, err = d.db.Query("select date, id, projcode, hours, desc, notes from worklog order by id desc limit 10")
 	} else {
-		rows, err = d.db.Query("select date, id, projcode, hours, desc, notes from worklog order by id desc limit 10 offset ?", m.maxId-m.id+1)
+		rows, err = d.db.Query("select date, id, projcode, hours, desc, notes from worklog order by id desc limit 10 offset ?", m.maxId-m.id)
 	}
 	if err != nil {
 		log.Fatal(err)
@@ -174,7 +175,7 @@ func (d *Database) QueryEntries(m *model) ([]EntryRow, error) {
 		ent.entry.notes = ""
 		if notes.Valid {
 			ent.entry.notes = notes.String
-			log.Println(notes)
+			//log.Println(notes)
 		}
 		ents = append(ents, ent)
 		if m.id == 0 {
@@ -241,7 +242,6 @@ func (d *Database) QueryEntry(e EntryRow) (EntryRow, error) {
 		rows *sql.Rows
 		err  error
 	)
-
 	rows, _ = d.db.Query("select date, id, projcode, hours, desc, starttime, endtime, notes from worklog where id = %d", e.entryId)
 	defer rows.Close()
 	var ent EntryRow
@@ -270,7 +270,7 @@ func (d *Database) CreateDatabase() error {
 		endtime TIME, 
 		projcode TEXT NOT NULL, 
 		date DATE NOT NULL,
-		notes TEXT,
+		notes TEXT
 	);`
 	_, err := d.db.Exec(sqlStmt)
 	if err != nil {
