@@ -159,7 +159,7 @@ const (
 	endTime
 	hours
 	submit
-	delete
+	deleted
 	imp
 	unlink
 )
@@ -707,7 +707,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							submitFailed = true
 							break
 						}
-						db.DeleteLink(entry.entry.projCode)
+						err := db.DeleteLink(entry.entry.projCode)
+						if err != nil {
+							m.errBuilder = err.Error()
+							submitFailed = true
+							break
+						}
+						delete(ProjCodeToTask, entry.entry.projCode)
 					}
 
 					// Cycle cursor position in input
