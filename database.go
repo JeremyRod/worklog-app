@@ -192,8 +192,9 @@ func (d *Database) QueryEntries(m *model) ([]EntryRow, error) {
 
 func (d *Database) QueryAndExport() error {
 	var (
-		rows *sql.Rows
-		err  error
+		rows  *sql.Rows
+		err   error
+		notes sql.NullString
 	)
 	prevDate := time.Time{}
 	f, err := os.OpenFile("export.txt", os.O_RDWR|os.O_CREATE|os.O_TRUNC|os.O_SYNC, 0755)
@@ -210,10 +211,15 @@ func (d *Database) QueryAndExport() error {
 	w := bufio.NewWriterSize(f, bufferSize)
 	for rows.Next() {
 		ent := EntryRow{}
-		err = rows.Scan(&ent.entry.date, &ent.entryId, &ent.entry.projCode, &ent.entry.hours, &ent.entry.desc)
+		err = rows.Scan(&ent.entry.date, &ent.entryId, &ent.entry.projCode, &ent.entry.hours, &ent.entry.desc, &notes)
 		if err != nil {
 			log.Fatal(err)
 			return err
+		}
+		ent.entry.notes = ""
+		if notes.Valid {
+			ent.entry.notes = notes.String
+			//log.Println(notes)
 		}
 		if prevDate != ent.entry.date {
 			prevDate = ent.entry.date
