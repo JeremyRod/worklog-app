@@ -145,8 +145,8 @@ var (
 // FIXME: Fix the formatting here
 func (e EntryRow) Title() string {
 	date := e.entry.date.Format("02/01/2006")
-	time := e.entry.hours.Hours()
-	return fmt.Sprintf("Date: %v Project: %s Hours: %.2f", date, e.entry.projCode, time)
+	time := fmt.Sprintf("%d:%02d", int(e.entry.hours.Hours()), int(e.entry.hours.Minutes())%60)
+	return fmt.Sprintf("Date: %v Project: %s Hours: %s", date, e.entry.projCode, time)
 }
 func (e EntryRow) Description() string { return e.entry.desc }
 func (e EntryRow) FilterValue() string { return e.entry.projCode }
@@ -346,8 +346,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.errBuilder = err.Error()
 					return m, nil
 				}
+				date := time.Time{}
 				for i := range ents {
+					if date != ents[i].entry.date {
+
+					}
 					m.sumContent += fmt.Sprintf("%s\n%s\n", ents[i].Title(), ents[i].Description())
+					m.sumContent += "\n"
 				}
 
 				headerHeight := lipgloss.Height(m.headerView())
@@ -440,7 +445,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg := msg.(type) {
 		case tea.KeyMsg:
 			switch msg.String() {
-			case "ctrl+c", "q", "esc":
+			case "ctrl+c":
 				return m, tea.Quit
 
 			case "tab":
@@ -453,24 +458,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			headerHeight := lipgloss.Height(m.headerView())
 			footerHeight := lipgloss.Height(m.footerView())
 			verticalMarginHeight := headerHeight + footerHeight
-			useHighPerformanceRenderer = true
 
-			// if !m.ready {
-			// Since this program is using the full size of the viewport we
-			// need to wait until we've received the window dimensions before
-			// we can initialize the viewport. The initial dimensions come in
-			// quickly, though asynchronously, which is why we wait for them
-			// here.
 			m.viewport = viewport.New(m.winW, m.winH-verticalMarginHeight)
 			m.viewport.YPosition = headerHeight
 			m.viewport.HighPerformanceRendering = useHighPerformanceRenderer
 			m.viewport.SetContent(m.sumContent)
 			m.ready = true
-
-			// This is only necessary for high performance rendering, which in
-			// most cases you won't need.
-			//
-			// Render the viewport one line below the header.
 			m.viewport.YPosition = headerHeight + 1
 
 			if useHighPerformanceRenderer {
@@ -482,7 +475,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-		// Handle keyboard and mouse events in the viewport
+		// // Handle keyboard and mouse events in the viewport
 		m.viewport, cmd = m.viewport.Update(msg)
 		cmds = append(cmds, cmd)
 
@@ -887,7 +880,6 @@ func (m model) View() string {
 			b.WriteString(fmt.Sprintf("%v", err))
 		}
 	case New:
-		useHighPerformanceRenderer = false
 		var s string
 		var n string
 		for i := range m.inputs {
@@ -920,7 +912,6 @@ func (m model) View() string {
 		}
 
 	case Get:
-		useHighPerformanceRenderer = false
 		_, err := b.WriteString(docStyle.Render(m.list.View()))
 		if err != nil {
 			b.WriteString(fmt.Sprintf("%v", err))
@@ -931,7 +922,6 @@ func (m model) View() string {
 			n string
 			s string
 		)
-		useHighPerformanceRenderer = false
 		for i := range m.modInputs {
 			s += m.modInputs[i].View()
 			if i < len(m.modInputs)-1 {
@@ -966,13 +956,9 @@ func (m model) View() string {
 			b.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, modelStyle.Render(s), focusedModelStyle.Render(n)))
 		}
 	case Summary:
-		// if !m.ready {
-		// 	b.WriteString("\n  Initializing...")
-		// } else {
 		fmt.Fprintf(&b, "\n%s\n%s\n%s", m.headerView(), m.viewport.View(), m.footerView()) //, m.footerView())
 		//}
 	case Login:
-		useHighPerformanceRenderer = false
 		for i := range m.loginInputs {
 			b.WriteString(m.loginInputs[i].View())
 			if i < len(m.loginInputs)-1 {
