@@ -346,13 +346,26 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.errBuilder = err.Error()
 					return m, nil
 				}
-				date := time.Time{}
+				date := ents[0].entry.date
+				duration := make(map[string]time.Duration)
+				desc := make(map[string]string)
 				for i := range ents {
 					if date != ents[i].entry.date {
-
+						date = ents[i].entry.date
+						m.sumContent += ents[i].entry.date.Format("02/01/2006")
+						m.sumContent += "\n\n"
+						for k, v := range duration {
+							m.sumContent += fmt.Sprintf("Project: %s Hours:%02d:%02d\n", k, int(v.Hours()), int(v.Minutes())%60)
+							m.sumContent += desc[k] + "\n"
+						}
+						clear(desc)
+						clear(duration)
 					}
-					m.sumContent += fmt.Sprintf("%s\n%s\n", ents[i].Title(), ents[i].Description())
-					m.sumContent += "\n"
+					duration[ents[i].entry.projCode] += ents[i].entry.hours
+					desc[ents[i].entry.projCode] += ents[i].entry.desc + ". "
+
+					//m.sumContent += fmt.Sprintf("%s\n%s\n", ents[i].Title(), ents[i].Description())
+					//m.sumContent += "\n"
 				}
 
 				headerHeight := lipgloss.Height(m.headerView())
