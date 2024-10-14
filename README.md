@@ -31,7 +31,7 @@ The login form takes in the users Scoro username and password and uses this to g
 
 The login data is not saved at all and is only used to obtain auth. The user will need to login on every new session and may need to re-enter details if auth is considered stale in a long session. 
 
-If you do not want to enter login details, a .env file can be used to store these details for the worklog app to read from when required. 
+If you do not want to enter login details, a `user.env` file can be used to store these details for the worklog app to read from when required. 
 
 ```
 SCOROUSER=jeremy.rodarellis@boostdesign.com.au
@@ -67,7 +67,7 @@ If the Scoro task/bucket has changed after a Project code has been linked, the u
     - ~~Once user token is obtained for the session, the user will then need to link project codes to scoro buckets. ~~
     - ~~Save in a map or in another table in the DB.~~
 - ~~Add versioning~~
-- ~~Export worklog ~~
+- ~~Export worklog~~
 - ~~Notes view~~
 - Summary view revamp, format text a little better, change hours view to be hh:mm. 
 - Allow saving of a weeks entries from summary view.
@@ -99,3 +99,5 @@ If the Scoro task/bucket has changed after a Project code has been linked, the u
 - ~~Going to modify view, then tabbing back to list view hides items~~
 - ~~Going to modify view then going back when past the first 10 items will index incorrectly~~
 - ~~Going into modify view and back will forget the current list index.~~
+- Resizing terminal window in summary view will cause a summary artifact to cover the screen making it unusable, requires restart.
+- Getting next 10 list items duplicates the edge value.
