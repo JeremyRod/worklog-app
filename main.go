@@ -698,8 +698,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							// if check event codes needs some interaction, dont go to get state.
 							m.modRowID = 0
 							m.state = Get
+							m.resetModState()
 						}
-						m.resetModState()
 					} else if s == "enter" && m.modFocusIndex == len(m.modInputs)+3 {
 						entry := EntryRow{}
 						if err := entry.ModFillData(&m); err != nil {
