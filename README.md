@@ -100,4 +100,7 @@ If the Scoro task/bucket has changed after a Project code has been linked, the u
 - ~~Going to modify view then going back when past the first 10 items will index incorrectly~~
 - ~~Going into modify view and back will forget the current list index.~~
 - Resizing terminal window in summary view will cause a summary artifact to cover the screen making it unusable, requires restart.
-- Getting next 10 list items duplicates the edge value.
+- ~~Getting next 10 list items duplicates the edge value.~~
+- ~~Unlink will remove db entry but not update the map in code.~~
+- ~~After pressing upload and being asked to link to a task, the mod state will be reset even if the upload was not complete.~~
+- ~~exporting broken due to notes field.~~
