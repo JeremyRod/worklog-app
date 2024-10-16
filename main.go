@@ -82,7 +82,7 @@ var (
 	titleStyle = func() lipgloss.Style {
 		b := lipgloss.RoundedBorder()
 		b.Right = "├"
-		return lipgloss.NewStyle().BorderStyle(b).Padding(0, 1)
+		return lipgloss.NewStyle().BorderStyle(b).Padding(0, 0)
 	}()
 
 	infoStyle = func() lipgloss.Style {
@@ -345,6 +345,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if err != nil {
 					m.errBuilder = err.Error()
 					return m, nil
+				}
+				log.Println(ents)
+				if len(ents) == 0 {
+					m.errBuilder = "No Entries this week"
+					submitFailed = true
+					m.state = Get
+					break
 				}
 				date := ents[len(ents)-1].entry.date
 				duration := make(map[string]time.Duration)
