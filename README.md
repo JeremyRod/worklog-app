@@ -13,17 +13,37 @@ Ctrl+C on any page will close the app so make sure to save all data before closi
 ### How to enter new view?
 Default view when the app starts
 
+### What to do in New View?
+This is where new entrys are created and notes are added.
+Hit the Save button to add the entry to the database
+**Tab** will move between the New and List View when continually pressed 
+
 ## List View
 ### How to enter list view?
-Tab from New or Modify view to get to the list view.
+**Tab** from New or Modify view to get to the list view.
+**Tab** will move between the New and List View when continually pressed
+
+### What to do in list view 
+You can view all the current items that have been added to the DB. The list view will start with the latest 10 items and infinite scrol until the last item is reached
 
 ## Summary View
 ### How to enter summary view?
 Press ctrl + p to enter summary view when in the list view
 
+### What to do in summary view
+Here you can see all entries from the last 7 days.
+If all these entries seem correct you can hit **Enter** to start the upload process. 
+First you will be prompted to login and then link any project codes to scoro tasks that are currently unlinked.
+Once complete hit **Enter** again from the summary page to upload all entries accumulated from the week.
+
 ## Modify View
 ### How to enter modify view?
 Press enter on an item in the list view. 
+
+### What to do in modify view?
+In this view you are able to edit an entry and then save it or delete it if no longer required. 
+You are also able to upload a single entry or unlink it if the scoro task bucket has changed and needs to be updated. 
+***When a time entry is submitted to an old task, the consequences are untested an unknown. This could range from a http failure response to a success with a new entry being lost to the void. Please check all data is accurate and appropriately organised before submitting. If an issue occurs contact your scoro admin***
 
 ## Login 
 ### Why login? 
