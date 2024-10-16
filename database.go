@@ -123,6 +123,7 @@ func (d *Database) QuerySummary(m *model) ([]EntryRow, error) {
 		ents []EntryRow
 	)
 	//fmt.Println(m.currentDate.String())
+	m.currentDate = time.Now()
 	startDate := m.currentDate.AddDate(0, 0, 1).Format("2006-01-02")
 	endDate := m.currentDate.AddDate(0, 0, -7).Format("2006-01-02")
 	//fmt.Println(fmt.Sprintf("select date, id, projcode, hours, desc from worklog where date between date(%s) and date(%s)", startDate, endDate))
