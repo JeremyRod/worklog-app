@@ -56,7 +56,8 @@ type model struct {
 
 	// Retreived tasks list view
 	listTask list.Model
-	choice   string
+	choice   []string
+	index    int
 	// taskDone bool // Use this to make the check loop wait for the user to choose a task
 
 	// Login view for uploads
@@ -69,6 +70,7 @@ type model struct {
 	// Track app state for view rendering
 	state    ViewState
 	substate SubState
+	retState ViewState
 
 	// Maintain current window size in model for list rerendering.
 	winH int
@@ -122,7 +124,7 @@ var (
 	noStyle                  = lipgloss.NewStyle()
 	helpStyle                = blurredStyle
 	cursorModeHelpStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
-	docStyle                 = lipgloss.NewStyle().Margin(2, 2, 0, 2)
+	docStyle                 = lipgloss.NewStyle().Margin(4, 2, 0, 2)
 	focusedButton            = focusedStyle.Render("[ Submit ]")
 	blurredButton            = blurredStyle.Render("[ Submit ]")
 	focusDelete              = focusedStyle.Render("[ Delete ]")
@@ -341,26 +343,29 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			case "ctrl+p":
 				ents, err := db.QuerySummary(&m)
-				//fmt.Println(ents)
+				log.Println(ents)
 				if err != nil {
 					m.errBuilder = err.Error()
 					return m, nil
 				}
-				log.Println(ents)
 				if len(ents) == 0 {
 					m.errBuilder = "No Entries this week"
 					submitFailed = true
 					m.state = Get
 					break
 				}
-				date := ents[len(ents)-1].entry.date
+				date := ents[0].entry.date
 				duration := make(map[string]time.Duration)
 				desc := make(map[string]string)
-				for i := len(ents) - 1; i >= 0; i-- {
+				first := true
+				for i := 0; i < len(ents); i++ {
+					if first {
+						m.sumContent += ents[0].entry.date.Format("02/01/2006")
+						m.sumContent += "\n\n"
+						first = false
+					}
 					if date != ents[i].entry.date {
 						date = ents[i].entry.date
-						m.sumContent += ents[i].entry.date.Format("02/01/2006")
-						m.sumContent += "\n\n"
 						for k, v := range duration {
 							m.sumContent += fmt.Sprintf("Project: %s Hours: %02d:%02d\n", k, int(v.Hours()), int(v.Minutes())%60)
 							m.sumContent += "\n"
@@ -369,13 +374,21 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.sumContent += "\n"
 						clear(desc)
 						clear(duration)
+						m.sumContent += ents[i].entry.date.Format("02/01/2006")
+						m.sumContent += "\n\n"
 					}
 					duration[ents[i].entry.projCode] += ents[i].entry.hours
 					desc[ents[i].entry.projCode] += ents[i].entry.desc + "\n"
-
-					//m.sumContent += fmt.Sprintf("%s\n%s\n", ents[i].Title(), ents[i].Description())
-					//m.sumContent += "\n"
 				}
+				// Flush last date data since loop will prematurely end
+				for k, v := range duration {
+					m.sumContent += fmt.Sprintf("Project: %s Hours: %02d:%02d\n", k, int(v.Hours()), int(v.Minutes())%60)
+					m.sumContent += "\n"
+					m.sumContent += desc[k] + "\n"
+				}
+				m.sumContent += "\n"
+				clear(desc)
+				clear(duration)
 
 				headerHeight := lipgloss.Height(m.headerView())
 				footerHeight := lipgloss.Height(m.footerView())
@@ -474,8 +487,37 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.sumContent = ""
 				m.viewport.SetContent(m.sumContent)
 				m.state = Get
-			}
 
+			case "enter":
+				ents, err := db.QuerySummary(&m)
+				if err != nil {
+					log.Println(err)
+					m.state = Get
+					submitFailed = true
+					m.errBuilder = "Submit Summary Failed"
+					break
+				}
+				check := LoginGetTasks(&m)
+				if check {
+					m.state = Login
+					m.retState = Summary
+					log.Println("Login failed/need creds")
+					break
+				}
+				ok, err := CheckEventCodeMap(&m, ents...)
+				if err != nil {
+					m.errBuilder += err.Error()
+					break
+				}
+				if ok {
+					// Get user token
+					if err := DoTaskSubmit(ents...); err != nil {
+						m.errBuilder += err.Error()
+					}
+					// if check event codes needs some interaction, dont go to get state.
+					m.state = Get
+				}
+			}
 		case tea.WindowSizeMsg:
 			headerHeight := lipgloss.Height(m.headerView())
 			footerHeight := lipgloss.Height(m.footerView())
@@ -698,6 +740,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						check := LoginGetTasks(&m)
 						if check {
 							m.state = Login
+							m.retState = Modify
 							log.Println("Login failed/need creds")
 							break
 						}
@@ -801,10 +844,26 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "ctrl+c":
 				return m, tea.Quit
 
-			case "enter": // Once a task is selected go back to modify view
+			case "enter":
+				// If from modify go back to modify
+				// If from summary go back to summary
+				// Loop through every task that needs linking before returning.
 				i := m.listTask.SelectedItem()
-				AddToTaskMap(m.choice, i.(Data).EventName)
-				m.state = Modify
+				AddToTaskMap(m.choice[m.index], i.(Data).EventName)
+				if m.index != len(m.choice)-1 {
+					items := TaskList.constructTaskList()
+					m.listTask = list.New(items, list.NewDefaultDelegate(), 0, 0)
+					m.listTask.Title = fmt.Sprintf("Choose a task for %s", m.choice[m.index])
+					m.listTask.SetSize(m.winW, m.winH)
+					m.index++
+					break
+				}
+				m.index = 0
+				if len(m.choice) > 1 {
+					m.state = Summary
+				} else {
+					m.state = Modify
+				}
 			}
 		}
 		m.listTask, cmd = m.listTask.Update(msg)
@@ -822,11 +881,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			case "enter", "up", "down", "left", "right": // Once a task is selected go back to modify view
 				if keypress == "enter" && m.loginFocusIndex == len(m.loginInputs) {
-					m.state = Modify
+					m.state = m.retState
 					LoginGetTaskForm(&m, m.loginInputs[username].Value(), m.loginInputs[password].Value())
 				} else if keypress == "enter" && m.loginFocusIndex == len(m.loginInputs)+1 {
 					m.resetLoginState()
-					m.state = Modify
+					m.state = m.retState
 				}
 				// Cycle indexes
 				if keypress == "up" || keypress == "left" {
@@ -1077,12 +1136,13 @@ func CheckEventCodeMap(m *model, entries ...EntryRow) (bool, error) {
 	check := true
 	for i := 0; i < len(entries); i++ {
 		_, ok := ProjCodeToTask[entries[i].entry.projCode]
+		// Add all entries that need linking
 		if !ok {
 			check = false
 			items := TaskList.constructTaskList()
-			m.choice = entries[i].entry.projCode
+			m.choice = append(m.choice, entries[i].entry.projCode)
 			m.listTask = list.New(items, list.NewDefaultDelegate(), 0, 0)
-			m.listTask.Title = "Choose a task"
+			m.listTask.Title = fmt.Sprintf("Choose a task for %s", entries[i].entry.projCode)
 			m.state = Task
 			m.listTask.SetSize(m.winW, m.winH)
 		}
