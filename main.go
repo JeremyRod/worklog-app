@@ -392,14 +392,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 				headerHeight := lipgloss.Height(m.headerView())
 				footerHeight := lipgloss.Height(m.footerView())
-				verticalMarginHeight := headerHeight + footerHeight
+				verticalMarginHeight := headerHeight + footerHeight + 4
 
-				m.viewport = viewport.New(m.winW, m.winH-verticalMarginHeight)
-				m.viewport.YPosition = headerHeight
+				m.viewport = viewport.New(m.winW-3, m.winH-verticalMarginHeight)
 				m.viewport.HighPerformanceRendering = useHighPerformanceRenderer
 				m.viewport.SetContent(m.sumContent)
 				m.ready = true
-				m.viewport.YPosition = headerHeight + 1
+				m.viewport.YPosition = headerHeight - 2
 
 				if useHighPerformanceRenderer {
 					// Render (or re-render) the whole viewport. Necessary both to
