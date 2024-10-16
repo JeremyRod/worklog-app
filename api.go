@@ -186,6 +186,10 @@ func DoTaskSubmit(entries ...EntryRow) error {
 		// TODO: formatting required for API, consider rethinking data store to reduce the load
 		dur := fmt.Sprintf("%02d:%02d:%02d", int(entries[i].entry.hours.Hours()), int(entries[i].entry.hours.Minutes())%60, int(entries[i].entry.hours.Seconds())%60)
 		date := entries[i].entry.date.Format("2006-01-02")
+		completed := true
+		if entries[i].entry.date.After(time.Now()) {
+			completed = false
+		}
 		compDate := formatISO8601(entries[i])
 		postBody, _ := json.Marshal(map[string]any{
 			"lang":               "eng",
@@ -196,7 +200,7 @@ func DoTaskSubmit(entries ...EntryRow) error {
 			"request": Request{
 				Description:   entries[i].entry.desc,
 				Date:          date,
-				Completed:     true,
+				Completed:     completed,
 				EventID:       ProjCodeToTask[entries[i].entry.projCode],
 				Duration:      dur,
 				CompDate:      compDate, // scoro use ISO_8601 for datetime
