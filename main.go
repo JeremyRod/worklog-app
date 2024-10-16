@@ -346,23 +346,25 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.errBuilder = err.Error()
 					return m, nil
 				}
-				date := ents[0].entry.date
+				date := ents[len(ents)-1].entry.date
 				duration := make(map[string]time.Duration)
 				desc := make(map[string]string)
-				for i := range ents {
+				for i := len(ents) - 1; i >= 0; i-- {
 					if date != ents[i].entry.date {
 						date = ents[i].entry.date
 						m.sumContent += ents[i].entry.date.Format("02/01/2006")
 						m.sumContent += "\n\n"
 						for k, v := range duration {
-							m.sumContent += fmt.Sprintf("Project: %s Hours:%02d:%02d\n", k, int(v.Hours()), int(v.Minutes())%60)
+							m.sumContent += fmt.Sprintf("Project: %s Hours: %02d:%02d\n", k, int(v.Hours()), int(v.Minutes())%60)
+							m.sumContent += "\n"
 							m.sumContent += desc[k] + "\n"
 						}
+						m.sumContent += "\n"
 						clear(desc)
 						clear(duration)
 					}
 					duration[ents[i].entry.projCode] += ents[i].entry.hours
-					desc[ents[i].entry.projCode] += ents[i].entry.desc + ". "
+					desc[ents[i].entry.projCode] += ents[i].entry.desc + "\n"
 
 					//m.sumContent += fmt.Sprintf("%s\n%s\n", ents[i].Title(), ents[i].Description())
 					//m.sumContent += "\n"
@@ -537,6 +539,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							// We also probably want to show the newest list at this point.
 							items := []list.Item{}
 							m.list = list.New(items, list.NewDefaultDelegate(), 0, 0)
+							m.list.Title = "worklog entries"
 							submitFailed = false
 							m.resetState()
 							m.id = 0
