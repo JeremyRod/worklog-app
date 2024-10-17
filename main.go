@@ -359,7 +359,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				// log.Println(m.startDate.String(), m.endDate.String())
 				ents, err := db.QuerySummary(&m)
-				log.Println(ents)
+				//log.Println(ents)
 				if err != nil {
 					m.errBuilder = err.Error()
 					m.startDate = time.Time{}
@@ -373,6 +373,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					break
 				}
 				date := ents[0].entry.date
+				var dayTotal time.Duration
 				duration := make(map[string]time.Duration)
 				desc := make(map[string]string)
 				first := true
@@ -389,13 +390,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							m.sumContent += "\n"
 							m.sumContent += desc[k] + "\n"
 						}
+						m.sumContent += focusedModelStyle.Render(fmt.Sprintf("Total Hours in the Day: %02d:%02d\n", int(dayTotal.Hours()), int(dayTotal.Minutes())%60))
 						m.sumContent += "\n"
 						clear(desc)
 						clear(duration)
+						dayTotal, _ = time.ParseDuration("0s")
 						m.sumContent += ents[i].entry.date.Format("02/01/2006")
 						m.sumContent += "\n\n"
 					}
 					duration[ents[i].entry.projCode] += ents[i].entry.hours
+					dayTotal += ents[i].entry.hours
 					desc[ents[i].entry.projCode] += ents[i].entry.desc + "\n"
 				}
 				// Flush last date data since loop will prematurely end
@@ -405,8 +409,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.sumContent += desc[k] + "\n"
 				}
 				m.sumContent += "\n"
+				m.sumContent += fmt.Sprintf("Total Hours in the Day: %02d:%02d\n", int(dayTotal.Hours()), int(dayTotal.Minutes())%60)
 				clear(desc)
 				clear(duration)
+				dayTotal, _ = time.ParseDuration("0s")
 
 				headerHeight := lipgloss.Height(m.headerView())
 				footerHeight := lipgloss.Height(m.footerView())
