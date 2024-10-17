@@ -100,6 +100,7 @@ type Data struct {
 	StartDateTime string `json:"start_datetime"`
 	Dur           string `json:"duration"`
 	Comp          string `json:"completed_datetime"`
+	ActType       string `json:"acitivity_type"`
 }
 
 func (d Data) FilterValue() string { return d.EventName }
