@@ -91,13 +91,13 @@ If the Scoro task/bucket has changed after a Project code has been linked, the u
 - ~~Notes view~~
 - ~~Summary view revamp, format text a little better, change hours view to be hh:mm.~~ 
 - ~~Allow saving of a weeks entries from summary view.~~
-- Add ability to select dates for summary.
+- ~~Add ability to select dates for summary.~~
 
 ### Future Additions 
 - error log file rotations?
 - Filepicker for importing.
 - Add inbuilt search functionality based on any input
-- Add ability to select summary dates. 
+- ~~Add ability to select summary dates.~~ 
 - Add testing to code
 
 ### Known Bugs
