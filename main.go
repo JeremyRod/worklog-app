@@ -125,6 +125,9 @@ var (
 				BorderForeground(lipgloss.Color("69"))
 	focusedStyle             = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
 	blurredStyle             = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	summaryTotalStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("#390099"))
+	summaryDateStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("#592e83"))
+	summaryProjStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("#9984d4"))
 	cursorStyle              = focusedStyle
 	noStyle                  = lipgloss.NewStyle()
 	helpStyle                = blurredStyle
@@ -368,9 +371,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				if len(ents) == 0 {
 					m.errBuilder = "No Entries this week"
+					m.startDate = time.Time{}
+					m.endDate = time.Time{}
 					submitFailed = true
 					m.state = Get
-					break
+					return m, nil
 				}
 				date := ents[0].entry.date
 				var dayTotal time.Duration
@@ -379,23 +384,23 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				first := true
 				for i := 0; i < len(ents); i++ {
 					if first {
-						m.sumContent += ents[0].entry.date.Format("02/01/2006")
+						m.sumContent += summaryDateStyle.Render(ents[0].entry.date.Format("02/01/2006"))
 						m.sumContent += "\n\n"
 						first = false
 					}
 					if date != ents[i].entry.date {
 						date = ents[i].entry.date
 						for k, v := range duration {
-							m.sumContent += fmt.Sprintf("Project: %s Hours: %02d:%02d\n", k, int(v.Hours()), int(v.Minutes())%60)
+							m.sumContent += summaryProjStyle.Render(fmt.Sprintf("Project: %s Hours: %02d:%02d\n", k, int(v.Hours()), int(v.Minutes())%60))
 							m.sumContent += "\n"
 							m.sumContent += desc[k] + "\n"
 						}
-						m.sumContent += focusedModelStyle.Render(fmt.Sprintf("Total Hours in the Day: %02d:%02d\n", int(dayTotal.Hours()), int(dayTotal.Minutes())%60))
+						m.sumContent += summaryTotalStyle.Render(fmt.Sprintf("Total Hours in the Day: %02d:%02d\n", int(dayTotal.Hours()), int(dayTotal.Minutes())%60))
 						m.sumContent += "\n"
 						clear(desc)
 						clear(duration)
 						dayTotal, _ = time.ParseDuration("0s")
-						m.sumContent += ents[i].entry.date.Format("02/01/2006")
+						m.sumContent += summaryDateStyle.Render(ents[i].entry.date.Format("02/01/2006"))
 						m.sumContent += "\n\n"
 					}
 					duration[ents[i].entry.projCode] += ents[i].entry.hours
@@ -404,12 +409,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				// Flush last date data since loop will prematurely end
 				for k, v := range duration {
-					m.sumContent += fmt.Sprintf("Project: %s Hours: %02d:%02d\n", k, int(v.Hours()), int(v.Minutes())%60)
+					m.sumContent += summaryProjStyle.Render(fmt.Sprintf("Project: %s Hours: %02d:%02d\n", k, int(v.Hours()), int(v.Minutes())%60))
 					m.sumContent += "\n"
 					m.sumContent += desc[k] + "\n"
 				}
 				m.sumContent += "\n"
-				m.sumContent += fmt.Sprintf("Total Hours in the Day: %02d:%02d\n", int(dayTotal.Hours()), int(dayTotal.Minutes())%60)
+				m.sumContent += summaryTotalStyle.Render(fmt.Sprintf("Total Hours in the Day: %02d:%02d\n", int(dayTotal.Hours()), int(dayTotal.Minutes())%60))
 				clear(desc)
 				clear(duration)
 				dayTotal, _ = time.ParseDuration("0s")
