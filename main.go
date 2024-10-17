@@ -209,8 +209,8 @@ func initialModel() model {
 		substate:     ListView,
 		id:           0,
 		currentDate:  time.Now(),
-		startDate:    time.Now(),
-		endDate:      time.Now(),
+		startDate:    time.Time{},
+		endDate:      time.Time{},
 	}
 
 	var t textinput.Model
@@ -350,8 +350,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch msg.String() {
 
 			case "ctrl+p":
-				if m.startDate == m.currentDate && m.endDate == m.currentDate {
+				if m.startDate.IsZero() && m.endDate.IsZero() {
 					m.retState = Get
+					m.startDate = m.currentDate
+					m.endDate = m.currentDate
 					m.state = DateSelect
 					break
 				}
@@ -360,8 +362,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				log.Println(ents)
 				if err != nil {
 					m.errBuilder = err.Error()
-					m.startDate = m.currentDate
-					m.endDate = m.currentDate
+					m.startDate = time.Time{}
+					m.endDate = time.Time{}
 					return m, nil
 				}
 				if len(ents) == 0 {
@@ -495,8 +497,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "tab":
 				m.sumContent = ""
 				m.viewport.SetContent(m.sumContent)
-				m.startDate = m.currentDate
-				m.endDate = m.currentDate
+				m.startDate = time.Time{}
+				m.endDate = time.Time{}
 				m.state = Get
 
 			case "enter":
@@ -526,8 +528,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.errBuilder += err.Error()
 					}
 					// if check event codes needs some interaction, dont go to get state.
-					m.startDate = m.currentDate
-					m.endDate = m.currentDate
+					m.startDate = time.Time{}
+					m.endDate = time.Time{}
 
 					m.state = Get
 				}
@@ -1013,7 +1015,7 @@ func (m model) View() string {
 		startView := fmt.Sprintf("Start Date: [%s]", highlightField(m.startDate, m.dateCursor, m.selectStart))
 		endView := fmt.Sprintf("End Date:   [%s]", highlightField(m.endDate, m.dateCursor, !m.selectStart))
 
-		instructions := "Use arrow keys to adjust, Tab to switch between start/end dates, q to quit."
+		instructions := "Use arrow keys to adjust, Tab to switch between start/end dates, tab to switch back to list, ctrl+c to quit."
 
 		b.WriteString(fmt.Sprintf("%s\n%s\n\n%s", startView, endView, instructions))
 	case New:
