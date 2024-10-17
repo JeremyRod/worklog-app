@@ -905,6 +905,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "ctrl+c":
 				return m, tea.Quit
 
+			case "tab":
+				m.sumContent = ""
+				m.viewport.SetContent(m.sumContent)
+				m.startDate = time.Time{}
+				m.endDate = time.Time{}
+				m.state = Get
+
 			case "enter":
 				// If from modify go back to modify
 				// If from summary go back to summary
