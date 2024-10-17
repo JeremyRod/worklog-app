@@ -89,17 +89,16 @@ If the Scoro task/bucket has changed after a Project code has been linked, the u
 - ~~Add versioning~~
 - ~~Export worklog~~
 - ~~Notes view~~
-- Summary view revamp, format text a little better, change hours view to be hh:mm. 
-- Allow saving of a weeks entries from summary view.
+- ~~Summary view revamp, format text a little better, change hours view to be hh:mm.~~ 
+- ~~Allow saving of a weeks entries from summary view.~~
+- Add ability to select dates for summary.
 
 ### Future Additions 
-- nicer error logging 
 - error log file rotations?
-- Saving of user login and password details encrypted. 
 - Filepicker for importing.
-- Add ability to switch filter item (proj, desc).
-- Check for common worklog syntax issues, resolve for importing.
-- Future add ability to select a week to view.
+- Add inbuilt search functionality based on any input
+- Add ability to select summary dates. 
+- Add testing to code
 
 ### Known Bugs
 - ~~If deleting an entry list will not update until navigating away and back~~
