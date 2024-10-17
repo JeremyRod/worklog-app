@@ -65,6 +65,11 @@ type model struct {
 	loginFocusIndex int
 	formLogged      bool
 
+	//Date selector view linked to summary
+	dateCursor  int
+	selectStart bool
+	startDate   time.Time
+	endDate     time.Time
 	// TODO: logger for error logging, do rotations and nice logging later
 
 	// Track app state for view rendering
@@ -182,6 +187,7 @@ const (
 	Summary
 	Task
 	Login
+	DateSelect
 )
 
 type SubState int
@@ -203,6 +209,8 @@ func initialModel() model {
 		substate:     ListView,
 		id:           0,
 		currentDate:  time.Now(),
+		startDate:    time.Now(),
+		endDate:      time.Now(),
 	}
 
 	var t textinput.Model
@@ -342,10 +350,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch msg.String() {
 
 			case "ctrl+p":
+				if m.startDate == m.currentDate && m.endDate == m.currentDate {
+					m.retState = Get
+					m.state = DateSelect
+					break
+				}
+				// log.Println(m.startDate.String(), m.endDate.String())
 				ents, err := db.QuerySummary(&m)
 				log.Println(ents)
 				if err != nil {
 					m.errBuilder = err.Error()
+					m.startDate = m.currentDate
+					m.endDate = m.currentDate
 					return m, nil
 				}
 				if len(ents) == 0 {
@@ -461,13 +477,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		if m.list.Index() == len(m.list.Items())-1 && m.id != 1 {
-			// e, err := db.QueryEntries(&m)
-			// if err != nil {
-			// 	return m, nil
-			// }
-			// for _, v := range e {
-			// 	m.list.InsertItem(99999, v)
-			// }
+
 			m.ListUpdate()
 		}
 		m.list, cmd = m.list.Update(msg)
@@ -485,6 +495,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "tab":
 				m.sumContent = ""
 				m.viewport.SetContent(m.sumContent)
+				m.startDate = m.currentDate
+				m.endDate = m.currentDate
 				m.state = Get
 
 			case "enter":
@@ -514,6 +526,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.errBuilder += err.Error()
 					}
 					// if check event codes needs some interaction, dont go to get state.
+					m.startDate = m.currentDate
+					m.endDate = m.currentDate
+
 					m.state = Get
 				}
 			}
@@ -832,6 +847,40 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		cmd = m.updateInputs(msg)
 	}
+	if m.state == DateSelect {
+		switch msg := msg.(type) {
+		case tea.KeyMsg:
+			switch msg.String() {
+			case "enter":
+				m.state = m.retState
+			case "ctrl+c":
+				return m, tea.Quit
+			case "tab": // Switch between start and end date
+				m.selectStart = !m.selectStart
+			case "left":
+				if m.dateCursor > 0 {
+					m.dateCursor--
+				}
+			case "right":
+				if m.dateCursor < 2 {
+					m.dateCursor++
+				}
+			case "up":
+				if m.selectStart {
+					m.startDate = adjustDate(m.startDate, m.dateCursor, 1)
+				} else {
+					m.endDate = adjustDate(m.endDate, m.dateCursor, 1)
+				}
+			case "down":
+				if m.selectStart {
+					m.startDate = adjustDate(m.startDate, m.dateCursor, -1)
+				} else {
+					m.endDate = adjustDate(m.endDate, m.dateCursor, -1)
+				}
+			}
+		}
+		return m, nil
+	}
 	if m.state == Task {
 		switch msg := msg.(type) {
 		case tea.WindowSizeMsg:
@@ -960,6 +1009,13 @@ func (m model) View() string {
 		if err != nil {
 			b.WriteString(fmt.Sprintf("%v", err))
 		}
+	case DateSelect:
+		startView := fmt.Sprintf("Start Date: [%s]", highlightField(m.startDate, m.dateCursor, m.selectStart))
+		endView := fmt.Sprintf("End Date:   [%s]", highlightField(m.endDate, m.dateCursor, !m.selectStart))
+
+		instructions := "Use arrow keys to adjust, Tab to switch between start/end dates, q to quit."
+
+		b.WriteString(fmt.Sprintf("%s\n%s\n\n%s", startView, endView, instructions))
 	case New:
 		var s string
 		var n string
@@ -1159,10 +1215,6 @@ func (d *TaskListResp) constructTaskList() []list.Item {
 
 func (m *model) ListUpdate() error {
 	// Stop resetting the list. Append and keep index tracked.
-
-	// items := []list.Item{}
-	// m.list = list.New(items, list.NewDefaultDelegate(), 0, 0)
-	// m.list.Title = "Worklog Entries"
 	e, err := db.QueryEntries(m)
 	if err != nil {
 		return fmt.Errorf("%s", err)
@@ -1227,6 +1279,40 @@ func timeValidator(s string) error {
 		}
 	}
 	return nil
+}
+
+func highlightField(date time.Time, cursor int, selected bool) string {
+	year := fmt.Sprintf("%04d", date.Year())
+	month := fmt.Sprintf("%02d", date.Month())
+	day := fmt.Sprintf("%02d", date.Day())
+
+	switch cursor {
+	case 0: // Highlight year
+		if selected {
+			return focusedStyle.Render(fmt.Sprintf("[%s]-%s-%s", year, month, day))
+		}
+	case 1: // Highlight month
+		if selected {
+			return focusedStyle.Render(fmt.Sprintf("%s-[%s]-%s", year, month, day))
+		}
+	case 2: // Highlight day
+		if selected {
+			return focusedStyle.Render(fmt.Sprintf("%s-%s-[%s]", year, month, day))
+		}
+	}
+	return fmt.Sprintf("%s-%s-%s", year, month, day)
+}
+
+func adjustDate(date time.Time, cursor int, delta int) time.Time {
+	switch cursor {
+	case 0: // Year
+		return date.AddDate(delta, 0, 0)
+	case 1: // Month
+		return date.AddDate(0, delta, 0)
+	case 2: // Day
+		return date.AddDate(0, 0, delta)
+	}
+	return date
 }
 
 func durValidator(s string) error {

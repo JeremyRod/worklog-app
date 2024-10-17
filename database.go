@@ -124,11 +124,11 @@ func (d *Database) QuerySummary(m *model) ([]EntryRow, error) {
 	)
 	//fmt.Println(m.currentDate.String())
 	m.currentDate = time.Now()
-	startDate := m.currentDate.AddDate(0, 0, 1).Format("2006-01-02")
-	endDate := m.currentDate.AddDate(0, 0, -7).Format("2006-01-02")
+	startDate := m.startDate.Format("2006-01-02")
+	endDate := m.endDate.AddDate(0, 0, 1).Format("2006-01-02")
 	//fmt.Println(fmt.Sprintf("select date, id, projcode, hours, desc from worklog where date between date(%s) and date(%s)", startDate, endDate))
 
-	rows, err = d.db.Query("select date, id, projcode, hours, desc from worklog where date between date(?) and date(?) order by date desc", endDate, startDate)
+	rows, err = d.db.Query("select date, id, projcode, hours, desc from worklog where date between date(?) and date(?) order by date desc", startDate, endDate)
 	if err != nil {
 		return []EntryRow{}, err
 	}
