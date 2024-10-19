@@ -93,18 +93,17 @@ If the Scoro task/bucket has changed after a Project code has been linked, the u
 - ~~Summary view revamp, format text a little better, change hours view to be hh:mm.~~ 
 - ~~Allow saving of a weeks entries from summary view.~~
 - ~~Add ability to select dates for summary.~~
-- Ability to get summary of current day
+- ~~Ability to get summary of current day~~
+- ~~Total days hours in summary view~~
+- ~~Add ability to leave summary upload if wanted.~~
+- ~~Add activity type to uploaded time entry.~~
+- ~~Add ability to skip upload of certain proj codes.~~
 
 ### Future Additions 
 - error log file rotations?
 - Filepicker for importing.
 - Add inbuilt search functionality based on any input
-- ~~Add ability to select summary dates.~~ 
-- Add ability to skip upload of certain proj codes. 
-- Add ability to leave summary upload if wanted.
-- Add activity type to uploaded time entry.
 - Add testing to code
-- Total days hours in summary view
 
 ### Known Bugs
 - ~~If deleting an entry list will not update until navigating away and back~~
