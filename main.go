@@ -1226,7 +1226,7 @@ func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	log.SetOutput(f)
 
-	if err := db.OpenDatabase(); err != nil {
+	if err := db.OpenDatabase(nil); err != nil {
 		log.Println(err)
 	}
 
