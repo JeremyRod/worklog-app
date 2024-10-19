@@ -19,16 +19,17 @@ jobs:
       with:
         go-version: '1.22.3'
 
-    - name: Install deps
-      run: | 
-      go get github.com/mattn/go-sqlite3@v1.14.24
+    - name: Install go deps
+      run: go get .
+
+    - name: Install global deps
+      run: go get github.com/mattn/go-sqlite3@v1.14.24
 
     - name: Build
       run: |
         VERSION=${{ github.ref_name }}
         set CGO_ENABLED=1
         .\build.bat
-
 
     - name: Upload binaries
       uses: actions/upload-artifact@v3
