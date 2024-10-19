@@ -1,4 +1,4 @@
-package main
+package internal
 
 import (
 	"bufio"
@@ -10,7 +10,7 @@ import (
 )
 
 // For the moment the import function will only look for a file
-func ImportWorklog() (int, error) {
+func ImportWorklog(db *Database) (int, error) {
 	file, err := os.Open("worklog.txt")
 	if err != nil {
 		return -1, err
@@ -51,8 +51,8 @@ func ImportWorklog() (int, error) {
 			if check[0] == '\r' || check[0] == '\n' || err != nil {
 				continue
 			}
-			e.entry.desc += str
-			e.entry.desc += "\n"
+			e.Entry.Desc += str
+			e.Entry.Desc += "\n"
 		} else if strBytes[0] == '\t' && strBytes[1] != '\t' {
 			// Time, proj code and tags on single indent lines.
 			// Check that this isnt a line with nothing but a tab, happens
@@ -62,19 +62,19 @@ func ImportWorklog() (int, error) {
 			// Finish old entry and submit.
 			strArr := strings.Split(str, " ")
 
-			if !e.entry.startTime.IsZero() {
-				e.entry.endTime, err = time.Parse("15:04", strings.Trim(strArr[0], "\t"))
+			if !e.Entry.StartTime.IsZero() {
+				e.Entry.EndTime, err = time.Parse("15:04", strings.Trim(strArr[0], "\t"))
 				if err != nil {
 					return lineNum, fmt.Errorf("endtime parse fail")
 				}
-				e.entry.hours = time.Duration(e.entry.endTime.Sub(e.entry.startTime))
+				e.Entry.Hours = time.Duration(e.Entry.EndTime.Sub(e.Entry.StartTime))
 
 				db.SaveEntry(e)
 			}
 			// Start new entry
-			e.entry.desc = ""
-			e.entry.projCode = strArr[1]
-			e.entry.startTime, err = time.Parse("15:04", strings.Trim(strArr[0], "\t"))
+			e.Entry.Desc = ""
+			e.Entry.ProjCode = strArr[1]
+			e.Entry.StartTime, err = time.Parse("15:04", strings.Trim(strArr[0], "\t"))
 			if err != nil {
 				return lineNum, fmt.Errorf("startTime parse fail")
 			}
@@ -85,7 +85,7 @@ func ImportWorklog() (int, error) {
 			e = EntryRow{}
 			//  There should be no spaces on this line, stripping will some some common errors.
 			str = strings.Replace(str, " ", "", -1)
-			e.entry.date, err = time.Parse("2006-01-02", str)
+			e.Entry.Date, err = time.Parse("2006-01-02", str)
 			if err != nil {
 				return lineNum, fmt.Errorf("date parse fail")
 			}

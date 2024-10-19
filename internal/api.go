@@ -1,4 +1,4 @@
-package main
+package internal
 
 import (
 	"bytes"
@@ -9,7 +9,18 @@ import (
 	"os"
 	"runtime"
 	"time"
+
+	"github.com/charmbracelet/bubbles/list"
 )
+
+// Custom items for item
+type Item struct {
+	title, desc string
+}
+
+func (i Item) Title() string       { return i.title }
+func (i Item) Description() string { return i.desc }
+func (i Item) FilterValue() string { return i.title }
 
 type StatusCode int
 
@@ -24,6 +35,9 @@ const (
 	ServerError                   = 500
 	ServiceUnavailable            = 503
 )
+
+var ProjCodeToTask map[string]int // This is nil, reference before assignment will cause nil pointer issues
+var ProjCodeToAct map[string]int  // same as above
 
 type Auth struct {
 	Username   string `json:"username"`
@@ -77,6 +91,26 @@ type ModifyResp struct {
 	Data       Data        `json:"data"`
 }
 
+type ActivityResp struct {
+	Status     string      `json:"status"`
+	StatusCode int         `json:"statusCode"`
+	Messages   interface{} `json:"messages"`
+	Data       []Activity  `json:"data"`
+}
+
+type Activity struct {
+	ActivityID int    `json:"activity_id"`
+	ActName    string `json:"name"`
+	ParentName string `json:"parent_name"`
+	IsActive   bool   `json:"is_active"`
+}
+
+func (a Activity) FilterValue() string { return a.ActName }
+func (a Activity) Description() string { return a.ActName }
+func (a Activity) Title() string {
+	return fmt.Sprintf("Parent: %s Activity Name: %s is Active?: %v", a.ParentName, a.ActName, a.IsActive)
+}
+
 type Request struct {
 	EventID       int    `json:"event_id"`
 	Description   string `json:"description"`
@@ -87,6 +121,7 @@ type Request struct {
 	StartDateTime string `json:"start_datetime"`
 	Completed     bool   `json:"is_completed"`
 	Title         string `json:"title"`
+	ActivityID    int    `json:"activity_id"`
 }
 
 type Data struct {
@@ -100,7 +135,6 @@ type Data struct {
 	StartDateTime string `json:"start_datetime"`
 	Dur           string `json:"duration"`
 	Comp          string `json:"completed_datetime"`
-	ActType       string `json:"acitivity_type"`
 }
 
 func (d Data) FilterValue() string { return d.EventName }
@@ -131,6 +165,7 @@ func (d Data) String() string {
 
 var Authenticate AuthResp
 var TaskList TaskListResp
+var ActResp ActivityResp
 
 // Alter this function to run later
 func doHTTP(username string, password string) error {
@@ -174,21 +209,29 @@ func doHTTP(username string, password string) error {
 // For submitting new tasks
 func DoTaskSubmit(entries ...EntryRow) error {
 	// Check misuse
-	// var fr *os.File
-	// var err error
-	// if fr, err = os.Create("modifyresp.json"); err != nil {
-	// 	panic(err)
-	// }
+	var fr *os.File
+	var err error
+	if fr, err = os.Create("modifyresp.json"); err != nil {
+		panic(err)
+	}
 
 	if len(entries) == 0 {
 		return fmt.Errorf("no entries pass in")
 	}
 	for i := 0; i < len(entries); i++ {
 		// TODO: formatting required for API, consider rethinking data store to reduce the load
-		dur := fmt.Sprintf("%02d:%02d:%02d", int(entries[i].entry.hours.Hours()), int(entries[i].entry.hours.Minutes())%60, int(entries[i].entry.hours.Seconds())%60)
-		date := entries[i].entry.date.Format("2006-01-02")
+		dur := fmt.Sprintf("%02d:%02d:%02d", int(entries[i].Entry.Hours.Hours()), int(entries[i].Entry.Hours.Minutes())%60, int(entries[i].Entry.Hours.Seconds())%60)
+		date := entries[i].Entry.Date.Format("2006-01-02")
 		completed := true
-		if entries[i].entry.date.After(time.Now()) {
+		code := 0
+		if ProjCodeToTask[entries[i].Entry.ProjCode] == -1 {
+			// A skipped proj code go to next loop interation
+			continue
+		}
+		if ProjCodeToAct[entries[i].Entry.ProjCode] != -1 {
+			code = ProjCodeToAct[entries[i].Entry.ProjCode]
+		}
+		if entries[i].Entry.Date.After(time.Now()) {
 			completed = false
 		}
 		compDate := formatISO8601(entries[i])
@@ -199,14 +242,15 @@ func DoTaskSubmit(entries ...EntryRow) error {
 			"user_id":            Authenticate.Data.Settings.UserID,
 			"return_data":        true,
 			"request": Request{
-				Description:   entries[i].entry.desc,
+				Description:   entries[i].Entry.Desc,
 				Date:          date,
 				Completed:     completed,
-				EventID:       ProjCodeToTask[entries[i].entry.projCode],
+				EventID:       ProjCodeToTask[entries[i].Entry.ProjCode],
 				Duration:      dur,
 				CompDate:      compDate, // scoro use ISO_8601 for datetime
 				CreatedDate:   compDate,
 				StartDateTime: compDate,
+				ActivityID:    code,
 			},
 		})
 		responseBody := bytes.NewBuffer(postBody)
@@ -218,8 +262,8 @@ func DoTaskSubmit(entries ...EntryRow) error {
 		respJson := ModifyResp{}
 		decoder := json.NewDecoder(resp.Body)
 		decoder.Decode(&respJson)
-		//encr := json.NewEncoder(fr)
-		//encr.Encode(&respJson)
+		encr := json.NewEncoder(fr)
+		encr.Encode(&respJson)
 
 		//check for task submit status code
 		err = verifyStatus(StatusCode(respJson.StatusCode), false)
@@ -240,7 +284,7 @@ func DoTaskModify(entry EntryRow, id int) {
 	// if fr, err = os.Create("modify2resp.json"); err != nil {
 	// 	panic(err)
 	// }
-	dur := fmt.Sprintf("%02d:%02d:%02d", int(entry.entry.hours.Hours()), int(entry.entry.hours.Minutes())%60, int(entry.entry.hours.Seconds())%60)
+	dur := fmt.Sprintf("%02d:%02d:%02d", int(entry.Entry.Hours.Hours()), int(entry.Entry.Hours.Minutes())%60, int(entry.Entry.Hours.Seconds())%60)
 	compDate := formatISO8601(entry)
 	postBody, _ := json.Marshal(map[string]any{
 		"lang":               "eng",
@@ -274,11 +318,11 @@ func DoTaskModify(entry EntryRow, id int) {
 }
 
 func doListEntries() error {
-	var fr *os.File
-	var err error
-	if fr, err = os.Create("tasklistresp.json"); err != nil {
-		panic(err)
-	}
+	// var fr *os.File
+	// var err error
+	// if fr, err = os.Create("tasklistresp.json"); err != nil {
+	// 	panic(err)
+	// }
 	postBody, _ := json.Marshal(map[string]any{
 		"lang":               "eng",
 		"company_account_id": Authenticate.Data.Settings.MasterCompanyAccount,
@@ -293,11 +337,42 @@ func doListEntries() error {
 	}
 	defer resp.Body.Close()
 
-	encr := json.NewEncoder(fr)
+	//encr := json.NewEncoder(fr)
 	decoder := json.NewDecoder(resp.Body)
 	decoder.Decode(&TaskList)
-	encr.Encode(&TaskList)
+	//encr.Encode(&TaskList)
 	err = verifyStatus(StatusCode(TaskList.StatusCode), false)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func doListActivities() error {
+	// var fr *os.File
+	// var err error
+	// if fr, err = os.Create("actresp.json"); err != nil {
+	// 	panic(err)
+	// }
+	postBody, _ := json.Marshal(map[string]any{
+		"lang":               "eng",
+		"company_account_id": Authenticate.Data.Settings.MasterCompanyAccount,
+		"user_token":         Authenticate.Data.Token,
+		"user_id":            Authenticate.Data.Settings.UserID,
+		//"modules": "time_entries",
+	})
+	responseBody := bytes.NewBuffer(postBody)
+	resp, err := http.Post("https://boostdesign.scoro.com/api/v2/activities/list", "application/json", responseBody)
+	if err != nil {
+		return fmt.Errorf(err.Error())
+	}
+	defer resp.Body.Close()
+
+	//encr := json.NewEncoder(fr)
+	decoder := json.NewDecoder(resp.Body)
+	decoder.Decode(&ActResp)
+	//encr.Encode(&ActResp)
+	err = verifyStatus(StatusCode(ActResp.StatusCode), false)
 	if err != nil {
 		log.Println(err)
 	}
@@ -305,28 +380,56 @@ func doListEntries() error {
 }
 
 // function to map task list resp
-func AddToTaskMap(projCode string, task string) error {
+func (d *Database) AddToTaskMap(projCode string, item list.Item) error {
 	//User attempts to submit an entry. Oh wait, where does it go.
 	// So in this case we.... Show a list of tasks on the screen
 	// User selects one, pass in project code
-	for _, v := range TaskList.Data {
-		if v.EventName == task {
-			ProjCodeToTask[projCode] = v.EventID
-			db.SaveLink(projCode, v.EventID)
-			return nil
+	switch name := item.(type) {
+	case Data:
+		for _, v := range TaskList.Data {
+			if v.EventName == name.EventName {
+				ProjCodeToTask[projCode] = v.EventID
+				d.SaveLink(projCode, v.EventID)
+				return nil
+			}
 		}
+	case Item:
+		// We know this is
+		ProjCodeToTask[projCode] = -1
+		d.SaveLink(projCode, -1)
+		return nil
+	}
+	return fmt.Errorf("project not found")
+}
+
+// function to map task list resp
+func (d *Database) AddToActMap(projCode string, act list.Item) error {
+	switch name := act.(type) {
+	case Activity:
+		for _, v := range ActResp.Data {
+			if v.ActName == name.ActName {
+				ProjCodeToAct[projCode] = v.ActivityID
+				d.SaveAct(projCode, v.ActivityID)
+				return nil
+			}
+		}
+	case Item:
+		// We know this is
+		ProjCodeToTask[projCode] = -1
+		d.SaveAct(projCode, -1)
+		return nil
 	}
 	return fmt.Errorf("project not found")
 }
 
 // bool to let system know if it should continue with process or prompt user for input
-func LoginGetTasks(m *model) bool {
+func LoginGetTasks(formLogged *bool) bool {
 	username, exist := os.LookupEnv("SCOROUSER")
 	pass, existpass := os.LookupEnv("SCOROPASSWORD")
-	if (!exist || !existpass) && !m.formLogged {
+	if (!exist || !existpass) && !*formLogged {
 		log.Println(exist, existpass)
 		return true
-	} else if m.formLogged {
+	} else if *formLogged {
 		return false
 	} else {
 		if err := doHTTP(username, pass); err != nil {
@@ -339,18 +442,25 @@ func LoginGetTasks(m *model) bool {
 	return false
 }
 
-func LoginGetTaskForm(m *model, username string, pass string) {
+func LoginGetTaskForm(formLogged *bool, username string, pass string) error {
 	if err := doHTTP(username, pass); err != nil {
 		log.Println(err)
+		return err
 	}
 	if err := doListEntries(); err != nil {
 		log.Println(err)
+		return err
 	}
-	m.formLogged = true
+	if err := doListActivities(); err != nil {
+		log.Println(err)
+		return err
+	}
+	*formLogged = true
+	return nil
 }
 
 func formatISO8601(entry EntryRow) string {
-	date := entry.entry.date.Format("2006-01-02")
+	date := entry.Entry.Date.Format("2006-01-02")
 	_, zone := time.Now().Local().Zone()
 
 	// Calculate the sign, hours, and minutes
@@ -406,4 +516,24 @@ func verifyStatus(stat StatusCode, fromAuth bool) error {
 	default:
 		return fmt.Errorf("status uknown, check api")
 	}
+}
+
+func (d *TaskListResp) ConstructTaskList() []list.Item {
+	list := []list.Item{
+		Item{title: "SKIP UPLOAD", desc: "Dont upload this proj code"},
+	}
+	for _, v := range TaskList.Data {
+		list = append(list, v)
+	}
+	return list
+}
+
+func (a *ActivityResp) ConstructActList() []list.Item {
+	list := []list.Item{
+		Item{title: "SKIP ACTIVITY", desc: "Dont Assign an activity"},
+	}
+	for _, v := range ActResp.Data {
+		list = append(list, v)
+	}
+	return list
 }

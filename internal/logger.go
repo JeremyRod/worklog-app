@@ -1,4 +1,4 @@
-package main
+package internal
 
 // create logger implementation.
 // Probably just a os.Stdout logger to show when entries are saved.
