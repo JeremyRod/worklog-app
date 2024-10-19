@@ -78,7 +78,7 @@ If the Scoro task/bucket has changed after a Project code has been linked, the u
 - ~~Summary Page for Days, easily show work completed.~~
 - ~~Scoro API integration~~
     - ~~Allow Submitting of Single entry~~
-    - ~~Provide form for user provided details to retreive user token.~~
+    - ~~Provide form for user provided details to retreive user token~~
 - ~~Save map of projcode to event_id to database~~
 - ~~error logging~~
 - ~~delete links~~
@@ -103,7 +103,7 @@ If the Scoro task/bucket has changed after a Project code has been linked, the u
 - error log file rotations?
 - Filepicker for importing.
 - Add inbuilt search functionality based on any input
-- Add testing to code
+- Add more testing to code
 
 ### Known Bugs
 - ~~If deleting an entry list will not update until navigating away and back~~
@@ -117,13 +117,12 @@ If the Scoro task/bucket has changed after a Project code has been linked, the u
 - ~~Make summary view~~
 - ~~Allow importing and exporting of worklog txt file for storage and seeding.~~
     - ~~Currently only looks for files that have the same syntax as old worklog script.~~
-    - Improvement to above would be a file picker
 - ~~Allow export of entries in data base to text file.~~
     - ~~Same format as old worklog for compatibility.~~
 - ~~Going to modify view, then tabbing back to list view hides items~~
 - ~~Going to modify view then going back when past the first 10 items will index incorrectly~~
 - ~~Going into modify view and back will forget the current list index.~~
-- Resizing terminal window in summary view will cause a summary artifact to cover the screen making it unusable, requires restart.
+- ~~Resizing terminal window in summary view will cause a summary artifact to cover the screen making it unusable, requires restart.~~
 - ~~Getting next 10 list items duplicates the edge value.~~
 - ~~Unlink will remove db entry but not update the map in code.~~
 - ~~After pressing upload and being asked to link to a task, the mod state will be reset even if the upload was not complete.~~
