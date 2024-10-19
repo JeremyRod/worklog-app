@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	i "github.com/JeremyRod/worklog-app/v2/internal"
 	"github.com/charmbracelet/bubbles/cursor"
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/textarea"
@@ -58,6 +59,11 @@ type model struct {
 	listTask list.Model
 	choice   []string
 	index    int
+
+	// Retreived tasks list view
+	listAct list.Model
+	//actChoice []string
+	actIndex int
 	// taskDone bool // Use this to make the check loop wait for the user to choose a task
 
 	// Login view for uploads
@@ -152,33 +158,11 @@ var (
 	submitFailed        bool = false
 )
 
-// FIXME: Fix the formatting here
-func (e EntryRow) Title() string {
-	date := e.entry.date.Format("02/01/2006")
-	time := fmt.Sprintf("%d:%02d", int(e.entry.hours.Hours()), int(e.entry.hours.Minutes())%60)
-	return fmt.Sprintf("Date: %v Project: %s Hours: %s", date, e.entry.projCode, time)
-}
-func (e EntryRow) Description() string { return e.entry.desc }
-func (e EntryRow) FilterValue() string { return e.entry.projCode }
-
 const (
-	date = iota
-	code
-	desc
-	startTime
-	endTime
-	hours
-	submit
-	deleted
-	imp
-	unlink
-)
-
-const (
-	username = iota
-	password
-	cancel
-	submitted
+	Username = iota
+	Password
+	Cancel
+	Submitted
 )
 
 type ViewState int
@@ -191,6 +175,7 @@ const (
 	Task
 	Login
 	DateSelect
+	Act
 )
 
 type SubState int
@@ -202,11 +187,11 @@ const (
 
 func initialModel() model {
 	m := model{
-		inputs:       make([]textinput.Model, submit),
-		modInputs:    make([]textinput.Model, submit),
-		loginInputs:  make([]textinput.Model, cancel), // Only up to cancel since only two are inputs, rest are buttons.
-		inputsPos:    make([]int, submit),
-		modInputsPos: make([]int, submit),
+		inputs:       make([]textinput.Model, i.Submit),
+		modInputs:    make([]textinput.Model, i.Submit),
+		loginInputs:  make([]textinput.Model, Cancel), // Only up to cancel since only two are inputs, rest are buttons.
+		inputsPos:    make([]int, i.Submit),
+		modInputsPos: make([]int, i.Submit),
 		list:         list.Model{},
 		state:        New,
 		substate:     ListView,
@@ -230,85 +215,85 @@ func initialModel() model {
 	m.textarea = ti
 	m.modtextarea = ti
 
-	for i := range m.inputs {
+	for j := range m.inputs {
 		t = textinput.New()
 		t.Cursor.Style = cursorStyle
 		t.CharLimit = 32
 
-		switch i {
-		case date:
+		switch j {
+		case i.Date:
 			t.Placeholder = fmt.Sprintf("%v", tt.Format("02/01/2006"))
 			t.EchoMode = textinput.EchoNormal
 			t.Validate = dateValidator
 			t.Focus()
 			t.SetValue(fmt.Sprintf("%v", tt.Format("02/01/2006")))
 
-		case code:
+		case i.Code:
 			t.Placeholder = "Proj Code"
 			t.CharLimit = 10
 
-		case desc:
+		case i.Desc:
 			t.Placeholder = "Entry Desc"
 			t.CharLimit = 500
 			t.Width = 50
 
-		case startTime:
+		case i.StartTime:
 			t.Placeholder = "Start time: HH:MM"
 			t.Validate = timeValidator
 			t.CharLimit = 5
 
-		case endTime:
+		case i.EndTime:
 			t.Placeholder = fmt.Sprintf("%v", tt.Format("15:04"))
 			t.Validate = timeValidator
 			t.CharLimit = 5
 			t.SetValue(fmt.Sprintf("%v", tt.Format("15:04")))
 
-		case hours:
+		case i.Hours:
 			t.Placeholder = "Hours (opt) HH:MM"
 			t.Validate = durValidator
 			t.CharLimit = 6
 		}
-		m.inputs[i] = t
+		m.inputs[j] = t
 	}
 
-	for i := range m.modInputs {
+	for j := range m.modInputs {
 		t = textinput.New()
 		t.Cursor.Style = cursorStyle
 		t.CharLimit = 32
 
-		switch i {
-		case date:
+		switch j {
+		case i.Date:
 			t.Placeholder = fmt.Sprintf("%v", tt.Format("02/01/2006"))
 			t.EchoMode = textinput.EchoNormal
 			t.Validate = dateValidator
 			t.Focus()
 			t.SetValue(fmt.Sprintf("%v", tt.Format("02/01/2006")))
 
-		case code:
+		case i.Code:
 			t.Placeholder = "Proj Code"
 			t.CharLimit = 10
 
-		case desc:
+		case i.Desc:
 			t.Placeholder = "Entry Desc"
 			t.CharLimit = 500
 			t.Width = 50
 
-		case startTime:
+		case i.StartTime:
 			t.Placeholder = "Start time: HH:MM"
 			t.Validate = timeValidator
 			t.CharLimit = 5
 
-		case endTime:
+		case i.EndTime:
 			t.Placeholder = fmt.Sprintf("%v", tt.Format("15:04"))
 			t.Validate = timeValidator
 			t.CharLimit = 5
 
-		case hours:
+		case i.Hours:
 			t.Placeholder = "Hours (opt) XXhXXm"
 			t.Validate = durValidator
 			t.CharLimit = 6
 		}
-		m.modInputs[i] = t
+		m.modInputs[j] = t
 	}
 
 	for i := range m.loginInputs {
@@ -317,12 +302,12 @@ func initialModel() model {
 		t.CharLimit = 50
 
 		switch i {
-		case username:
+		case Username:
 			t.Placeholder = "Username/Email here"
 			t.EchoMode = textinput.EchoNormal
 			t.Focus()
 
-		case password:
+		case Password:
 			t.Placeholder = "Password"
 			t.EchoMode = textinput.EchoPassword
 		}
@@ -340,7 +325,8 @@ func (m model) Init() tea.Cmd {
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	var cmds []tea.Cmd
-	if m.state == Get {
+	switch m.state {
+	case Get:
 		switch msg := msg.(type) {
 		case tea.WindowSizeMsg:
 			h, v := docStyle.GetFrameSize()
@@ -361,7 +347,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					break
 				}
 				// log.Println(m.startDate.String(), m.endDate.String())
-				ents, err := db.QuerySummary(&m)
+				m.currentDate = time.Now()
+				ents, err := db.QuerySummary(&m.startDate, &m.endDate)
 				//log.Println(ents)
 				if err != nil {
 					m.errBuilder = err.Error()
@@ -377,19 +364,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.state = Get
 					return m, nil
 				}
-				date := ents[0].entry.date
+				date := ents[0].Entry.Date
 				var dayTotal time.Duration
 				duration := make(map[string]time.Duration)
 				desc := make(map[string]string)
 				first := true
 				for i := 0; i < len(ents); i++ {
 					if first {
-						m.sumContent += summaryDateStyle.Render(ents[0].entry.date.Format("02/01/2006"))
+						m.sumContent += summaryDateStyle.Render(ents[0].Entry.Date.Format("02/01/2006"))
 						m.sumContent += "\n\n"
 						first = false
 					}
-					if date != ents[i].entry.date {
-						date = ents[i].entry.date
+					if date != ents[i].Entry.Date {
+						date = ents[i].Entry.Date
 						for k, v := range duration {
 							m.sumContent += summaryProjStyle.Render(fmt.Sprintf("Project: %s Hours: %02d:%02d\n", k, int(v.Hours()), int(v.Minutes())%60))
 							m.sumContent += "\n"
@@ -400,12 +387,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						clear(desc)
 						clear(duration)
 						dayTotal, _ = time.ParseDuration("0s")
-						m.sumContent += summaryDateStyle.Render(ents[i].entry.date.Format("02/01/2006"))
+						m.sumContent += summaryDateStyle.Render(ents[i].Entry.Date.Format("02/01/2006"))
 						m.sumContent += "\n\n"
 					}
-					duration[ents[i].entry.projCode] += ents[i].entry.hours
-					dayTotal += ents[i].entry.hours
-					desc[ents[i].entry.projCode] += ents[i].entry.desc + "\n"
+					duration[ents[i].Entry.ProjCode] += ents[i].Entry.Hours
+					dayTotal += ents[i].Entry.Hours
+					desc[ents[i].Entry.ProjCode] += ents[i].Entry.Desc + "\n"
 				}
 				// Flush last date data since loop will prematurely end
 				for k, v := range duration {
@@ -441,8 +428,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			case "delete":
 				if items := m.list.Items(); len(items) != 0 {
-					item := items[m.list.Index()].(EntryRow)
-					if err := db.DeleteEntry(item.entryId); err != nil {
+					item := items[m.list.Index()].(i.EntryRow)
+					if err := db.DeleteEntry(item.EntryId); err != nil {
 						log.Println(err)
 					}
 					m.modRowID = 0
@@ -453,7 +440,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			case "enter":
 				items := m.list.Items()
-				item := items[m.list.Index()].(EntryRow)
+				item := items[m.list.Index()].(i.EntryRow)
 
 				cmds := make([]tea.Cmd, len(m.modInputs))
 				for i := 0; i <= len(m.modInputs)-1; i++ {
@@ -469,14 +456,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.modInputs[i].PromptStyle = noStyle
 					m.modInputs[i].TextStyle = noStyle
 				}
-				m.modInputs[date].SetValue(item.entry.date.Format("02/01/2006"))
-				m.modInputs[code].SetValue(item.entry.projCode)
-				m.modInputs[desc].SetValue(item.entry.desc)
-				m.modInputs[startTime].SetValue(item.entry.startTime.String())
-				m.modInputs[endTime].SetValue(item.entry.endTime.String())
-				m.modInputs[hours].SetValue(item.entry.hours.String()[:len(item.entry.hours.String())-2])
-				m.modRowID = item.entryId
-				m.modtextarea.SetValue(item.entry.notes)
+				m.modInputs[i.Date].SetValue(item.Entry.Date.Format("02/01/2006"))
+				m.modInputs[i.Code].SetValue(item.Entry.ProjCode)
+				m.modInputs[i.Desc].SetValue(item.Entry.Desc)
+				if !item.Entry.StartTime.IsZero() {
+					m.modInputs[i.StartTime].SetValue(item.Entry.StartTime.Format("15:04"))
+				}
+				m.modInputs[i.EndTime].SetValue(item.Entry.EndTime.Format("15:04"))
+				m.modInputs[i.Hours].SetValue(fmt.Sprintf("%02dh%02dm", int(item.Entry.Hours.Hours()), int(item.Entry.Hours.Minutes())%60))
+				m.modRowID = item.EntryId
+				m.modtextarea.SetValue(item.Entry.Notes)
 				m.state = Modify
 				return m, tea.Batch(cmds...)
 
@@ -494,7 +483,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.ListUpdate()
 		}
 		m.list, cmd = m.list.Update(msg)
-	} else if m.state == Summary {
+	case Summary:
 		var (
 			cmd  tea.Cmd
 			cmds []tea.Cmd
@@ -513,7 +502,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.state = Get
 
 			case "enter":
-				ents, err := db.QuerySummary(&m)
+				ents, err := db.QuerySummary(&m.startDate, &m.endDate)
 				if err != nil {
 					log.Println(err)
 					m.state = Get
@@ -521,27 +510,29 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.errBuilder = "Submit Summary Failed"
 					break
 				}
-				check := LoginGetTasks(&m)
+				check := i.LoginGetTasks(&m.formLogged)
 				if check {
 					m.state = Login
 					m.retState = Summary
 					log.Println("Login failed/need creds")
 					break
 				}
+				m.retState = Summary
 				ok, err := CheckEventCodeMap(&m, ents...)
 				if err != nil {
 					m.errBuilder += err.Error()
+					submitFailed = true
 					break
 				}
 				if ok {
 					// Get user token
-					if err := DoTaskSubmit(ents...); err != nil {
+					if err := i.DoTaskSubmit(ents...); err != nil {
 						m.errBuilder += err.Error()
 					}
 					// if check event codes needs some interaction, dont go to get state.
 					m.startDate = time.Time{}
 					m.endDate = time.Time{}
-
+					m.retState = Get
 					m.state = Get
 				}
 			}
@@ -572,7 +563,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		return m, tea.Batch(cmds...)
 
-	} else if m.state == New {
+	case New:
 		switch msg := msg.(type) {
 
 		case tea.WindowSizeMsg:
@@ -601,9 +592,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					// Did the user press enter while the submit button was focused?
 					// If so, exit.
 					if s == "enter" && m.focusIndex == len(m.inputs) {
-						entry := EntryRow{}
+						entry := i.EntryRow{}
 						//Testing with local copy incase pointer edits data.
-						if err := entry.FillData(&m); err != nil {
+						if err := entry.FillData(m.inputs, &m.textarea); err != nil {
 							m.errBuilder = err.Error()
 							submitFailed = true
 							break
@@ -623,7 +614,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						}
 
 					} else if s == "enter" && m.focusIndex == len(m.inputs)+1 {
-						line, err := ImportWorklog()
+						line, err := i.ImportWorklog(&db)
 						if err != nil {
 							submitFailed = true
 							m.errBuilder = err.Error() + " " + strconv.Itoa(line)
@@ -695,7 +686,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// Handle character input and blinking
 		cmd = m.updateInputs(msg)
-	} else if m.state == Modify {
+	case Modify:
 		switch msg := msg.(type) {
 		case tea.WindowSizeMsg:
 			h, v := docStyle.GetFrameSize()
@@ -720,14 +711,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				case "enter", "up", "down", "left", "right":
 					s := msg.String()
 					if s == "enter" && m.modFocusIndex == len(m.modInputs) {
-						entry := EntryRow{}
+						entry := i.EntryRow{}
 						//Testing with local copy incase pointer edits data.
-						if err := entry.ModFillData(&m); err != nil {
+						if err := entry.ModFillData(m.modInputs, &m.modtextarea); err != nil {
 							m.errBuilder = err.Error()
 							submitFailed = true
 							break
 						}
-						entry.entryId = m.modRowID
+						entry.EntryId = m.modRowID
 						if err := db.ModifyEntry(entry); err != nil {
 							submitFailed = true
 							break
@@ -744,8 +735,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 					} else if s == "enter" && m.modFocusIndex == len(m.modInputs)+1 {
 						items := m.list.Items()
-						item := items[m.list.Index()].(EntryRow)
-						if err := db.DeleteEntry(item.entryId); err != nil {
+						item := items[m.list.Index()].(i.EntryRow)
+						if err := db.DeleteEntry(item.EntryId); err != nil {
 							log.Println(err)
 						}
 						m.modRowID = 0
@@ -756,50 +747,54 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 					} else if s == "enter" && m.modFocusIndex == len(m.modInputs)+2 {
 						// scoro upload
-						entry := EntryRow{}
-						if err := entry.ModFillData(&m); err != nil {
+						entry := i.EntryRow{}
+						if err := entry.ModFillData(m.modInputs, &m.modtextarea); err != nil {
 							m.errBuilder = err.Error()
 							submitFailed = true
 							break
 						}
-						entry.entryId = m.modRowID
+						entry.EntryId = m.modRowID
 						// Get user token
-						check := LoginGetTasks(&m)
+						check := i.LoginGetTasks(&m.formLogged)
 						if check {
 							m.state = Login
 							m.retState = Modify
 							log.Println("Login failed/need creds")
 							break
 						}
+						m.retState = Modify
 						ok, err := CheckEventCodeMap(&m, entry)
 						if err != nil {
 							m.errBuilder += err.Error()
+							submitFailed = true
 							break
 						}
 						if ok {
 							// Get user token
-							if err := DoTaskSubmit(entry); err != nil {
+							if err := i.DoTaskSubmit(entry); err != nil {
 								m.errBuilder += err.Error()
 							}
 							// if check event codes needs some interaction, dont go to get state.
 							m.modRowID = 0
 							m.state = Get
+							m.retState = Get
 							m.resetModState()
 						}
 					} else if s == "enter" && m.modFocusIndex == len(m.modInputs)+3 {
-						entry := EntryRow{}
-						if err := entry.ModFillData(&m); err != nil {
+						entry := i.EntryRow{}
+						if err := entry.ModFillData(m.modInputs, &m.modtextarea); err != nil {
 							m.errBuilder = err.Error()
 							submitFailed = true
 							break
 						}
-						err := db.DeleteLink(entry.entry.projCode)
+						err := db.DeleteLink(entry.Entry.ProjCode)
 						if err != nil {
 							m.errBuilder = err.Error()
 							submitFailed = true
 							break
 						}
-						delete(ProjCodeToTask, entry.entry.projCode)
+						delete(i.ProjCodeToTask, entry.Entry.ProjCode)
+						delete(i.ProjCodeToAct, entry.Entry.ProjCode)
 					}
 
 					// Cycle cursor position in input
@@ -859,8 +854,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		cmd = m.updateInputs(msg)
-	}
-	if m.state == DateSelect {
+
+	case DateSelect:
 		switch msg := msg.(type) {
 		case tea.KeyMsg:
 			switch msg.String() {
@@ -893,8 +888,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		return m, nil
-	}
-	if m.state == Task {
+	case Task:
 		switch msg := msg.(type) {
 		case tea.WindowSizeMsg:
 			m.listTask.SetWidth(msg.Width)
@@ -913,13 +907,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.state = Get
 
 			case "enter":
-				// If from modify go back to modify
-				// If from summary go back to summary
-				// Loop through every task that needs linking before returning.
-				i := m.listTask.SelectedItem()
-				AddToTaskMap(m.choice[m.index], i.(Data).EventName)
+				// The pick from the task will then go straight to the act choice
+				item := m.listTask.SelectedItem()
+				db.AddToTaskMap(m.choice[m.index], item)
 				if m.index != len(m.choice)-1 {
-					items := TaskList.constructTaskList()
+					items := i.TaskList.ConstructTaskList()
 					m.listTask = list.New(items, list.NewDefaultDelegate(), 0, 0)
 					m.listTask.Title = fmt.Sprintf("Choose a task for %s", m.choice[m.index])
 					m.listTask.SetSize(m.winW, m.winH)
@@ -927,19 +919,60 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					break
 				}
 				m.index = 0
-				if len(m.choice) > 1 {
-					m.state = Summary
-				} else {
-					m.state = Modify
-				}
+				// Go to activity choice now.
+				m.state = Act
 			}
 		}
 		m.listTask, cmd = m.listTask.Update(msg)
-	}
-	if m.state == Login {
+	case Act:
 		switch msg := msg.(type) {
 		case tea.WindowSizeMsg:
-			m.listTask.SetWidth(msg.Width)
+			m.listAct.SetWidth(msg.Width)
+			return m, nil
+
+		case tea.KeyMsg:
+			switch keypress := msg.String(); keypress {
+			case "ctrl+c":
+				return m, tea.Quit
+
+			case "tab":
+				m.sumContent = ""
+				m.viewport.SetContent(m.sumContent)
+				m.startDate = time.Time{}
+				m.endDate = time.Time{}
+				m.state = Get
+
+			case "enter":
+				// If from modify go back to modify
+				// If from summary go back to summary
+				// Loop through every task that needs linking before returning.
+				item := m.listAct.SelectedItem()
+				db.AddToActMap(m.choice[m.actIndex], item)
+				if m.actIndex != len(m.choice)-1 {
+					items := i.ActResp.ConstructActList()
+					m.listAct = list.New(items, list.NewDefaultDelegate(), 0, 0)
+					m.listAct.Title = fmt.Sprintf("Choose an activity for %s", m.choice[m.actIndex])
+					m.listAct.SetSize(m.winW, m.winH)
+					m.actIndex++
+					break
+				}
+				m.actIndex = 0
+				if len(m.choice) > 1 {
+					m.state = Summary
+					m.choice = nil
+				} else {
+					m.state = Modify
+					m.choice = nil
+				}
+			}
+		}
+		m.listAct, cmd = m.listAct.Update(msg)
+	case Login:
+		switch msg := msg.(type) {
+		case tea.WindowSizeMsg:
+			h, v := docStyle.GetFrameSize()
+			m.winH = msg.Height - v
+			m.winW = msg.Width - h
 			return m, nil
 
 		case tea.KeyMsg:
@@ -949,8 +982,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			case "enter", "up", "down", "left", "right": // Once a task is selected go back to modify view
 				if keypress == "enter" && m.loginFocusIndex == len(m.loginInputs) {
+					if err := i.LoginGetTaskForm(&m.formLogged, m.loginInputs[Username].Value(), m.loginInputs[Password].Value()); err != nil {
+						m.errBuilder = "Login Failed try again"
+						submitFailed = true
+						break
+					}
 					m.state = m.retState
-					LoginGetTaskForm(&m, m.loginInputs[username].Value(), m.loginInputs[password].Value())
 				} else if keypress == "enter" && m.loginFocusIndex == len(m.loginInputs)+1 {
 					m.resetLoginState()
 					m.state = m.retState
@@ -1024,16 +1061,22 @@ func (m *model) updateInputs(msg tea.Msg) tea.Cmd {
 func (m model) View() string {
 	var b strings.Builder
 	switch m.state {
+	case Act:
+		_, err := b.WriteString(docStyle.Render(m.listAct.View()))
+		if err != nil {
+			b.WriteString(fmt.Sprintf("%v", err))
+		}
+
 	case Task:
 		_, err := b.WriteString(docStyle.Render(m.listTask.View()))
 		if err != nil {
 			b.WriteString(fmt.Sprintf("%v", err))
 		}
 	case DateSelect:
-		startView := fmt.Sprintf("Start Date: [%s]", highlightField(m.startDate, m.dateCursor, m.selectStart))
-		endView := fmt.Sprintf("End Date:   [%s]", highlightField(m.endDate, m.dateCursor, !m.selectStart))
+		startView := fmt.Sprintf("Start Date: %s", highlightField(m.startDate, m.dateCursor, m.selectStart))
+		endView := fmt.Sprintf("End Date:   %s", highlightField(m.endDate, m.dateCursor, !m.selectStart))
 
-		instructions := "Use arrow keys to adjust, Tab to switch between start/end dates, tab to switch back to list, ctrl+c to quit."
+		instructions := "Use arrow keys to adjust, Tab to switch between start/end dates, ctrl+c to quit."
 
 		b.WriteString(fmt.Sprintf("%s\n%s\n\n%s", startView, endView, instructions))
 	case New:
@@ -1149,10 +1192,10 @@ func (m *model) resetState() {
 	for v := range m.inputs {
 		m.inputs[v].Reset()
 	}
-	m.inputs[date].SetValue(fmt.Sprintf("%v", t.Format("02/01/2006")))
-	m.inputs[endTime].SetValue(fmt.Sprintf("%v", t.Format("15:04")))
-	m.inputsPos[date] = len(m.inputs[date].Value())
-	m.inputsPos[endTime] = len(m.inputs[endTime].Value())
+	m.inputs[i.Date].SetValue(fmt.Sprintf("%v", t.Format("02/01/2006")))
+	m.inputs[i.EndTime].SetValue(fmt.Sprintf("%v", t.Format("15:04")))
+	m.inputsPos[i.Date] = len(m.inputs[i.Date].Value())
+	m.inputsPos[i.EndTime] = len(m.inputs[i.EndTime].Value())
 	m.textarea.Reset()
 }
 
@@ -1171,7 +1214,7 @@ func (m *model) resetLoginState() {
 	}
 }
 
-var db Database = Database{db: nil}
+var db i.Database = i.Database{Db: nil}
 
 func main() {
 	// Logger for dev
@@ -1188,7 +1231,7 @@ func main() {
 	}
 
 	// Get the saved projevent links, errs will return empty map, system can still run.
-	ProjCodeToTask, err = db.QueryLinks()
+	i.ProjCodeToTask, i.ProjCodeToAct, err = db.QueryLinks()
 	if err != nil {
 		log.Println(err)
 	}
@@ -1206,36 +1249,38 @@ func main() {
 }
 
 // I think this will only work for one entry, rethink logic for multi submission.
-func CheckEventCodeMap(m *model, entries ...EntryRow) (bool, error) {
+func CheckEventCodeMap(m *model, entries ...i.EntryRow) (bool, error) {
 	// Check to see if we have all proj codes mapped to an event_id
 	check := true
-	for i := 0; i < len(entries); i++ {
-		_, ok := ProjCodeToTask[entries[i].entry.projCode]
+	for j := 0; j < len(entries); j++ {
+		_, ok := i.ProjCodeToTask[entries[j].Entry.ProjCode]
+		_, ok2 := i.ProjCodeToAct[entries[j].Entry.ProjCode]
 		// Add all entries that need linking
-		if !ok {
+		if !ok || !ok2 {
 			check = false
-			items := TaskList.constructTaskList()
-			m.choice = append(m.choice, entries[i].entry.projCode)
+			items := i.TaskList.ConstructTaskList()
+			if len(items) == 0 {
+				m.state = Login
+				return false, fmt.Errorf("bad login")
+			}
+			m.choice = append(m.choice, entries[j].Entry.ProjCode)
 			m.listTask = list.New(items, list.NewDefaultDelegate(), 0, 0)
-			m.listTask.Title = fmt.Sprintf("Choose a task for %s", entries[i].entry.projCode)
+			m.listTask.Title = fmt.Sprintf("Choose a task for %s", entries[j].Entry.ProjCode)
 			m.state = Task
 			m.listTask.SetSize(m.winW, m.winH)
+
+			actitems := i.ActResp.ConstructActList()
+			m.listAct = list.New(actitems, list.NewDefaultDelegate(), 0, 0)
+			m.listAct.Title = fmt.Sprintf("Choose an activity for %s", entries[j].Entry.ProjCode)
+			m.listAct.SetSize(m.winW, m.winH)
 		}
 	}
 	return check, nil
 }
 
-func (d *TaskListResp) constructTaskList() []list.Item {
-	list := []list.Item{}
-	for _, v := range TaskList.Data {
-		list = append(list, v)
-	}
-	return list
-}
-
 func (m *model) ListUpdate() error {
 	// Stop resetting the list. Append and keep index tracked.
-	e, err := db.QueryEntries(m)
+	e, err := db.QueryEntries(&m.id, &m.maxId)
 	if err != nil {
 		return fmt.Errorf("%s", err)
 	}
