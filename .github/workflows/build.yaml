@@ -38,10 +38,16 @@ jobs:
 
     - name: Build
       run: |
-        export CGO_ENABLED=1
         GOOS=${{ matrix.goos }}
         GOARCH=${{ matrix.arch }}
         VERSION=${{ github.ref_name }}
+        if [ "${{ matrix.os }}" == "ubuntu-latest" ] || [ "${{ matrix.os }}" == "macos-latest" ]; then
+          export CGO_ENABLED=1 
+          go build -o worklog-$GOOS-$GOARCH-$VERSION
+        else
+          set CGO_ENABLED=1
+          go build -o worklog-%GOOS%-%GOARCH%-%VERSION%
+        fi
         go build -o worklog-$GOOS-$GOARCH-$VERSION
 
     - name: Upload binaries
