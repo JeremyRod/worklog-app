@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"testing"
 	"time"
 
 	"github.com/charmbracelet/bubbles/textarea"
@@ -348,8 +349,16 @@ func (d *Database) SeedDatabase() error {
 	return nil
 }
 
-func (d *Database) OpenDatabase() error {
-	db, err := sql.Open("sqlite3", "./worklog.db")
+func (d *Database) OpenDatabase(t *testing.T) error {
+	var (
+		db  *sql.DB
+		err error
+	)
+	if t != nil {
+		db, err = sql.Open("sqlite3", "./test.db")
+	} else {
+		db, err = sql.Open("sqlite3", "./worklog.db")
+	}
 	if err != nil {
 		return errors.New("database broke")
 	}
