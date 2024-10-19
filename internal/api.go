@@ -209,11 +209,11 @@ func doHTTP(username string, password string) error {
 // For submitting new tasks
 func DoTaskSubmit(entries ...EntryRow) error {
 	// Check misuse
-	var fr *os.File
-	var err error
-	if fr, err = os.Create("modifyresp.json"); err != nil {
-		panic(err)
-	}
+	// var fr *os.File
+	// var err error
+	// if fr, err = os.Create("modifyresp.json"); err != nil {
+	// 	panic(err)
+	// }
 
 	if len(entries) == 0 {
 		return fmt.Errorf("no entries pass in")
@@ -262,8 +262,7 @@ func DoTaskSubmit(entries ...EntryRow) error {
 		respJson := ModifyResp{}
 		decoder := json.NewDecoder(resp.Body)
 		decoder.Decode(&respJson)
-		encr := json.NewEncoder(fr)
-		encr.Encode(&respJson)
+		//encr.Encode(&respJson)
 
 		//check for task submit status code
 		err = verifyStatus(StatusCode(respJson.StatusCode), false)
