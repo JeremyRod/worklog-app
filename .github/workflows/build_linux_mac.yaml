@@ -1,4 +1,4 @@
-name: Build Worklog App
+name: Build Worklog App Linux/Mac
 
 on:
   push:

@@ -27,7 +27,7 @@ jobs:
 
     - name: Build
       run: |
-        VERSION=${{ github.ref_name }}
+        set VERSION=${{ github.ref_name }}
         set CGO_ENABLED=1
         .\build.bat
 
