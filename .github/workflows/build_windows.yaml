@@ -60,9 +60,4 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Provided automatically by GitHub Actions
 
-    - name: Upload binary to release
-      uses: actions/upload-artifact@v4
-      with:
-        name: worklog-windows-amd64-${{ github.ref_name }}
-        path: worklog-*
         # Upload artifact created in the build step to the release
