@@ -42,9 +42,11 @@ jobs:
     runs-on: windows-latest
     needs: build  # Ensure build job finishes before this step
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
+    - name: Download artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: worklog-windows-amd64-${{ github.ref_name }}  # Use the artifact name from the build job
+   
     - name: Create Release
       id: create_release
       uses: softprops/action-gh-release@v2
