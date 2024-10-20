@@ -43,7 +43,7 @@ jobs:
     needs: build  # Ensure build job finishes before this step
     steps:
     - name: Checkout code
-      uses: actions/checkout@v5
+      uses: actions/checkout@v4
 
     - name: Create Release
       id: create_release
