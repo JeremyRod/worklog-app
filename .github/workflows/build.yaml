@@ -1,0 +1,91 @@
+name: Build and Release Worklog App Windows
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'  # Only run on version tags like v1.0.0
+
+jobs:
+  build:
+    name: Build on Windows
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        os: ['ubuntu-latest', 'macos-latest', 'windows-latest']
+        arch: ['amd64', 'arm64']
+        go-version: ['1.22.3']
+        goos: ['linux', 'darwin', 'windows']
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.22.3'
+
+    # Install dependencies for CGO (SQLite)
+    - name: Install dependencies on Linux
+      if: matrix.os == 'ubuntu-latest'
+      run: sudo apt-get update && sudo apt-get install -y gcc libc6-dev
+
+    - name: Install dependencies on macOS
+      if: matrix.os == 'macos-latest'
+      run: |
+        brew update
+        brew install gcc sqlite
+
+    - name: Install global deps
+      run: |
+        go get .
+        go get github.com/mattn/go-sqlite3@v1.14.24
+
+    - name: Build for Linux
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        GOOS=${{ matrix.goos }}
+        GOARCH=${{ matrix.arch }}
+        VERSION=${{ github.ref_name }}
+        GIT_COMMIT := $(shell git rev-parse --short HEAD)
+        export CGO_ENABLED=1 
+        go build -ldflags "-X main.version=$(VERSION) -X main.gitCommit=$(GIT_COMMIT)" -o worklog-$GOOS-$GOARCH-$VERSION
+
+    - name: Build for macOS
+      if: matrix.os == 'macos-latest'
+      run: |
+        GOOS=${{ matrix.goos }}
+        GOARCH=${{ matrix.arch }}
+        VERSION=${{ github.ref_name }}
+        GIT_COMMIT := $(shell git rev-parse --short HEAD)
+        export CGO_ENABLED=1 
+        go build -ldflags "-X main.version=$(VERSION) -X main.gitCommit=$(GIT_COMMIT)" -o worklog-$GOOS-$GOARCH-$VERSION
+
+    - name: Build for Windows
+      if: matrix.os == 'windows-latest'
+      run: |
+        set VERSION=${{ github.ref_name }}
+        set CGO_ENABLED=1
+        .\build.bat ${{ matrix.goos }} ${{ matrix.goos }}
+
+    - name: Upload binaries
+      uses: actions/upload-artifact@v4
+      with:
+        name: worklog-${{ matrix.goos }}-${{ matrix.goos }}-${{ github.ref_name }}
+        path: worklog-*
+
+    - name: Create Release
+      id: create_release
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: ${{ github.ref_name }}  # Use the tag version from the pushed tag
+        name: Release ${{ github.ref_name }}
+        body: |
+          Release notes for version ${{ github.ref_name }}.
+          - Windows binary attached.
+        draft: true  # Set this to true to create a draft release
+        files: worklog-*
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Provided automatically by GitHub Actions
+
+        # Upload artifact created in the build step to the release
