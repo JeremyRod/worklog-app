@@ -14,7 +14,6 @@ jobs:
         os: ['ubuntu-latest', 'macos-latest', 'windows-latest']
         arch: ['amd64', 'arm64']
         go-version: ['1.22.3']
-        goos: ['linux', 'darwin', 'windows']
 
     steps:
     - name: Checkout code
@@ -44,20 +43,20 @@ jobs:
     - name: Build for Linux
       if: matrix.os == 'ubuntu-latest'
       run: |
-        GOOS=${{ matrix.goos }}
+        GOOS=linux
         GOARCH=${{ matrix.arch }}
         VERSION=${{ github.ref_name }}
-        GIT_COMMIT := $(git rev-parse --short HEAD)
+        GIT_COMMIT=$(git rev-parse --short HEAD)
         export CGO_ENABLED=1 
         go build -ldflags "-X main.version=$(VERSION) -X main.gitCommit=$(GIT_COMMIT)" -o worklog-$GOOS-$GOARCH-$VERSION
 
     - name: Build for macOS
       if: matrix.os == 'macos-latest'
       run: |
-        GOOS=${{ matrix.goos }}
+        GOOS=darwin
         GOARCH=${{ matrix.arch }}
         VERSION=${{ github.ref_name }}
-        GIT_COMMIT := $(git rev-parse --short HEAD)
+        GIT_COMMIT=$(git rev-parse --short HEAD)
         export CGO_ENABLED=1 
         go build -ldflags "-X main.version=$(VERSION) -X main.gitCommit=$(GIT_COMMIT)" -o worklog-$GOOS-$GOARCH-$VERSION
 
@@ -66,12 +65,12 @@ jobs:
       run: |
         set VERSION=${{ github.ref_name }}
         set CGO_ENABLED=1
-        .\build.bat ${{ matrix.goos }} ${{ matrix.goos }}
+        .\build.bat windows ${{ matrix.arch }}
 
     - name: Upload binaries
       uses: actions/upload-artifact@v4
       with:
-        name: worklog-${{ matrix.goos }}-${{ matrix.goos }}-${{ github.ref_name }}
+        name: worklog-windows-${{ matrix.arch }}-${{ github.ref_name }}
         path: worklog-*
 
     - name: Create Release
