@@ -1,4 +1,4 @@
-name: Build Worklog App
+name: Build and Release Worklog App Windows
 
 on:
   push:
@@ -32,7 +32,35 @@ jobs:
         .\build.bat
 
     - name: Upload binaries
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: worklog-windows-amd64-${{ github.ref_name }}
         path: worklog-*
+
+  release:
+    name: Create GitHub Release
+    runs-on: windows-latest
+    needs: build  # Ensure build job finishes before this step
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v5
+
+    - name: Create Release
+      id: create_release
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: ${{ github.ref_name }}  # Use the tag version from the pushed tag
+        release_name: Release ${{ github.ref_name }}
+        body: |
+          Release notes for version ${{ github.ref_name }}.
+          - Windows binary attached.
+        draft: true  # Set this to true to create a draft release
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Provided automatically by GitHub Actions
+
+    - name: Upload binary to release
+      uses: actions/upload-artifact@v4
+      with:
+        name: worklog-windows-amd64-${{ github.ref_name }}
+        path: worklog-*
+        # Upload artifact created in the build step to the release
