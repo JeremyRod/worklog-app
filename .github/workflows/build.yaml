@@ -47,7 +47,7 @@ jobs:
         GOOS=${{ matrix.goos }}
         GOARCH=${{ matrix.arch }}
         VERSION=${{ github.ref_name }}
-        GIT_COMMIT := $(shell git rev-parse --short HEAD)
+        GIT_COMMIT := $(git rev-parse --short HEAD)
         export CGO_ENABLED=1 
         go build -ldflags "-X main.version=$(VERSION) -X main.gitCommit=$(GIT_COMMIT)" -o worklog-$GOOS-$GOARCH-$VERSION
 
@@ -57,7 +57,7 @@ jobs:
         GOOS=${{ matrix.goos }}
         GOARCH=${{ matrix.arch }}
         VERSION=${{ github.ref_name }}
-        GIT_COMMIT := $(shell git rev-parse --short HEAD)
+        GIT_COMMIT := $(git rev-parse --short HEAD)
         export CGO_ENABLED=1 
         go build -ldflags "-X main.version=$(VERSION) -X main.gitCommit=$(GIT_COMMIT)" -o worklog-$GOOS-$GOARCH-$VERSION
 
