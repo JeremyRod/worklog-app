@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"testing"
 	"time"
@@ -59,24 +58,24 @@ func (e EntryRow) FilterValue() string { return e.Entry.ProjCode }
 func (d *Database) SaveEntry(entry EntryRow) error {
 	tx, err := d.Db.Begin()
 	if err != nil {
-		log.Println(err)
+		logger.Println(err)
 	}
 	stmt, err := tx.Prepare("insert into worklog(hours, desc, projcode, starttime, endtime, date, notes) values(?, ?, ?, ?, ?, ?, ?)")
 
 	if err != nil {
-		log.Fatal(err)
+		logger.Fatal(err)
 	}
 	defer stmt.Close()
 	_, err = stmt.Exec(entry.Entry.Hours,
 		entry.Entry.Desc, entry.Entry.ProjCode, entry.Entry.StartTime,
 		entry.Entry.EndTime, entry.Entry.Date, entry.Entry.Notes)
 	if err != nil {
-		log.Println(err)
+		logger.Println(err)
 		return err
 	}
 	err = tx.Commit()
 	if err != nil {
-		log.Fatal(err)
+		logger.Fatal(err)
 	}
 	return nil
 }
@@ -85,20 +84,20 @@ func (d *Database) DeleteEntry(e int) error {
 	sqlstmt := `delete from worklog where id = ?;`
 	tx, err := d.Db.Begin()
 	if err != nil {
-		log.Println(err)
+		logger.Println(err)
 	}
 	stmt, err := tx.Prepare(sqlstmt)
 	if err != nil {
-		log.Println(err)
+		logger.Println(err)
 	}
 	defer stmt.Close()
 	_, err = stmt.Exec(e)
 	if err != nil {
-		log.Println(err)
+		logger.Println(err)
 	}
 	err = tx.Commit()
 	if err != nil {
-		log.Fatal(err)
+		logger.Fatal(err)
 	}
 	return nil
 }
@@ -115,22 +114,22 @@ func (d *Database) ModifyEntry(e EntryRow) error {
 			where id = ?;`
 	tx, err := d.Db.Begin()
 	if err != nil {
-		log.Println(err)
+		logger.Println(err)
 	}
 	stmt, err := tx.Prepare(sqlstmt)
 	if err != nil {
-		log.Println(err)
+		logger.Println(err)
 	}
 	defer stmt.Close()
 	_, err = stmt.Exec(e.Entry.Desc, e.Entry.Hours,
 		e.Entry.ProjCode, e.Entry.Date, e.Entry.StartTime,
 		e.Entry.EndTime, e.Entry.Notes, e.EntryId)
 	if err != nil {
-		log.Println(err)
+		logger.Println(err)
 	}
 	err = tx.Commit()
 	if err != nil {
-		log.Fatal(err)
+		logger.Fatal(err)
 	}
 
 	return nil
@@ -185,7 +184,7 @@ func (d *Database) QueryEntries(id, maxId *int) ([]EntryRow, error) {
 		rows, err = d.Db.Query("select date, id, projcode, hours, desc, notes, starttime, endtime from worklog order by id desc limit 10 offset ?", *maxId-*id+1)
 	}
 	if err != nil {
-		log.Fatal(err)
+		logger.Fatal(err)
 	}
 	defer rows.Close()
 	ents := []EntryRow{}
@@ -193,7 +192,7 @@ func (d *Database) QueryEntries(id, maxId *int) ([]EntryRow, error) {
 		ent := EntryRow{}
 		err = rows.Scan(&ent.Entry.Date, &ent.EntryId, &ent.Entry.ProjCode, &ent.Entry.Hours, &ent.Entry.Desc, &notes, &startTime, &endTime)
 		if err != nil {
-			log.Fatal(err)
+			logger.Fatal(err)
 		}
 		// Check if newColumn is valid (non-NULL) and print it
 		ent.Entry.Notes = ""
@@ -203,11 +202,11 @@ func (d *Database) QueryEntries(id, maxId *int) ([]EntryRow, error) {
 		}
 		ent.Entry.StartTime, err = time.Parse("2006-01-02 15:04:05-07:00", startTime)
 		if err != nil {
-			log.Println(err)
+			logger.Println(err)
 		}
 		ent.Entry.EndTime, err = time.Parse("2006-01-02 15:04:05-07:00", endTime)
 		if err != nil {
-			log.Println(err)
+			logger.Println(err)
 		}
 		ents = append(ents, ent)
 		if *id == 0 {
@@ -217,7 +216,7 @@ func (d *Database) QueryEntries(id, maxId *int) ([]EntryRow, error) {
 	}
 	err = rows.Err()
 	if err != nil {
-		log.Fatal(err)
+		logger.Fatal(err)
 	}
 	return ents, nil
 }
@@ -235,7 +234,7 @@ func (d *Database) QueryAndExport() error {
 	}
 	rows, err = d.Db.Query("select date, id, projcode, hours, desc, notes from worklog order by date ASC")
 	if err != nil {
-		log.Fatal(err)
+		logger.Fatal(err)
 		return err
 	}
 	defer rows.Close()
@@ -245,7 +244,7 @@ func (d *Database) QueryAndExport() error {
 		ent := EntryRow{}
 		err = rows.Scan(&ent.Entry.Date, &ent.EntryId, &ent.Entry.ProjCode, &ent.Entry.Hours, &ent.Entry.Desc, &notes)
 		if err != nil {
-			log.Fatal(err)
+			logger.Fatal(err)
 			return err
 		}
 		ent.Entry.Notes = ""
@@ -257,18 +256,18 @@ func (d *Database) QueryAndExport() error {
 			prevDate = ent.Entry.Date
 			_, err = w.WriteString(fmt.Sprintf("%s\n", ent.Entry.Date.Format("2006-01-02")))
 			if err != nil {
-				log.Println(err)
+				logger.Println(err)
 			}
 		}
 		_, err = w.WriteString(fmt.Sprintf("\t%02d:%02d:%02d %s\n\t\t%s\n", int(ent.Entry.Hours.Hours()), int(ent.Entry.Hours.Minutes())%60, int(ent.Entry.Hours.Seconds())%60, ent.Entry.ProjCode, ent.Entry.Desc))
 		if err != nil {
-			log.Println(err)
+			logger.Println(err)
 		}
 		w.Flush()
 	}
 	err = rows.Err()
 	if err != nil {
-		log.Fatal(err)
+		logger.Fatal(err)
 		return err
 	}
 	f.Close()
@@ -287,7 +286,7 @@ func (d *Database) QueryEntry(e EntryRow) (EntryRow, error) {
 	for rows.Next() {
 		err = rows.Scan(&ent.Entry.Date, &ent.EntryId, &ent.Entry.ProjCode, &ent.Entry.Hours, &ent.Entry.Desc, &ent.Entry.StartTime, &ent.Entry.EndTime, &notes)
 		if err != nil {
-			log.Fatal(err)
+			logger.Fatal(err)
 		}
 		//fmt.Println(ent.entryId, ent.entry.projCode)
 	}
@@ -299,7 +298,7 @@ func (d *Database) QueryEntry(e EntryRow) (EntryRow, error) {
 	}
 	err = rows.Err()
 	if err != nil {
-		log.Fatal(err)
+		logger.Fatal(err)
 	}
 	return ent, nil
 }
@@ -319,7 +318,7 @@ func (d *Database) CreateDatabase() error {
 	);`
 	_, err := d.Db.Exec(sqlStmt)
 	if err != nil {
-		log.Printf("%q: %s\n", err, sqlStmt)
+		logger.Printf("%q: %s\n", err, sqlStmt)
 		return fmt.Errorf("db stmt fail %q: %s", err, sqlStmt)
 	}
 	return nil
@@ -329,22 +328,22 @@ func (d *Database) CreateDatabase() error {
 func (d *Database) SeedDatabase() error {
 	tx, err := d.Db.Begin()
 	if err != nil {
-		log.Fatal(err)
+		logger.Fatal(err)
 	}
 	stmt, err := tx.Prepare("insert into worklog(id, name) values(?, ?)")
 	if err != nil {
-		log.Fatal(err)
+		logger.Fatal(err)
 	}
 	defer stmt.Close()
 	for i := 0; i < 100; i++ {
 		_, err = stmt.Exec(i, fmt.Sprintf("こんにちは世界%03d", i))
 		if err != nil {
-			log.Fatal(err)
+			logger.Fatal(err)
 		}
 	}
 	err = tx.Commit()
 	if err != nil {
-		log.Fatal(err)
+		logger.Fatal(err)
 	}
 	return nil
 }
@@ -382,22 +381,22 @@ func (e *EntryRow) FillData(inputs []textinput.Model, textarea *textarea.Model) 
 	var err error
 	e.Entry.Hours, err = time.ParseDuration(inputs[Hours].Value())
 	if err != nil && inputs[Hours].Value() != "" {
-		log.Println(err)
+		logger.Println(err)
 		return err
 	}
 	e.Entry.StartTime, err = time.Parse(timeFmt, inputs[StartTime].Value())
 	if err != nil && !e.Entry.StartTime.IsZero() {
-		log.Println(err)
+		logger.Println(err)
 		return err
 	}
 	e.Entry.EndTime, err = time.Parse(timeFmt, inputs[EndTime].Value())
 	if err != nil && !e.Entry.EndTime.IsZero() {
-		log.Println(err)
+		logger.Println(err)
 		return err
 	}
 	e.Entry.Date, err = time.Parse(dateFmt, inputs[Date].Value())
 	if err != nil {
-		log.Println(err)
+		logger.Println(err)
 		return err
 	}
 	e.Entry.ProjCode = inputs[Code].Value()
@@ -410,7 +409,7 @@ func (e *EntryRow) FillData(inputs []textinput.Model, textarea *textarea.Model) 
 
 	// Now do some validation checks on projcode and hours to make sure they exist.
 	if e.Entry.Hours.Minutes() == 0 || e.Entry.ProjCode == "" {
-		log.Println(e.Entry.Hours.Minutes(), e.Entry.ProjCode)
+		logger.Println(e.Entry.Hours.Minutes(), e.Entry.ProjCode)
 		return fmt.Errorf("empty hours or projcode, please check inputs")
 	}
 	return nil
@@ -422,22 +421,22 @@ func (e *EntryRow) ModFillData(inputs []textinput.Model, textarea *textarea.Mode
 	var err error
 	e.Entry.Hours, err = time.ParseDuration(inputs[Hours].Value())
 	if err != nil && inputs[Hours].Value() != "" {
-		log.Println(err)
+		logger.Println(err)
 		return err
 	}
 	e.Entry.StartTime, err = time.Parse(timeFmt, inputs[StartTime].Value())
 	if err != nil && !e.Entry.StartTime.IsZero() {
-		log.Println(err)
+		logger.Println(err)
 		return err
 	}
 	e.Entry.EndTime, err = time.Parse(timeFmt, inputs[EndTime].Value())
 	if err != nil && !e.Entry.EndTime.IsZero() {
-		log.Println(err)
+		logger.Println(err)
 		return err
 	}
 	e.Entry.Date, err = time.Parse(dateFmt, inputs[Date].Value())
 	if err != nil {
-		log.Println(err)
+		logger.Println(err)
 		return err
 	}
 	e.Entry.ProjCode = inputs[Code].Value()
@@ -450,7 +449,7 @@ func (e *EntryRow) ModFillData(inputs []textinput.Model, textarea *textarea.Mode
 
 	// Now do some validation checks on projcode and hours to make sure they exist.
 	if e.Entry.Hours.Minutes() == 0 || e.Entry.ProjCode == "" {
-		log.Println(e.Entry.Hours.Minutes(), e.Entry.ProjCode)
+		logger.Println(e.Entry.Hours.Minutes(), e.Entry.ProjCode)
 		return fmt.Errorf("empty hours or projcode, please check inputs")
 	}
 	return nil
@@ -470,10 +469,10 @@ func (d *Database) CreateEventDatabase() error {
 		);`
 	_, err := d.Db.Exec(sqlStmt)
 	if err != nil {
-		log.Fatalf("%q: %s\n", err, sqlStmt)
+		logger.Fatalf("%q: %s\n", err, sqlStmt)
 		//return fmt.Errorf("db stmt fail %q: %s", err, sqlStmt)
 	}
-	log.Println("Table 'users' created successfully (or already exists)")
+	logger.Println("Table 'users' created successfully (or already exists)")
 	return nil
 }
 
@@ -513,9 +512,9 @@ func (d *Database) AlterProjTable() error {
 		if err != nil {
 			return err
 		}
-		log.Println("Column activity added to table projeventlink")
+		logger.Println("Column activity added to table projeventlink")
 	} else {
-		log.Println("Column activity already exists in table projeventlink")
+		logger.Println("Column activity already exists in table projeventlink")
 	}
 	return nil
 }
@@ -556,9 +555,9 @@ func (d *Database) AlterTable() error {
 		if err != nil {
 			return err
 		}
-		log.Println("Column notes added to table worklog")
+		logger.Println("Column notes added to table worklog")
 	} else {
-		log.Println("Column notes already exists in table worklog")
+		logger.Println("Column notes already exists in table worklog")
 	}
 	return nil
 }
@@ -571,7 +570,7 @@ func (d *Database) QueryLinks() (map[string]int, map[string]int, error) {
 	// Query the table for all rows
 	rows, err := d.Db.Query("SELECT projcode, eventid, activity FROM projeventlink")
 	if err != nil {
-		log.Fatal(err)
+		logger.Fatal(err)
 	}
 	defer rows.Close()
 
@@ -582,7 +581,7 @@ func (d *Database) QueryLinks() (map[string]int, map[string]int, error) {
 		var activityID sql.NullInt32
 		err = rows.Scan(&projCode, &eventID, &activityID) // Scan each row into the variables
 		if err != nil {
-			log.Println(err)
+			logger.Println(err)
 			return map[string]int{}, map[string]int{}, err
 		}
 		// Add the result to the map
@@ -595,25 +594,25 @@ func (d *Database) QueryLinks() (map[string]int, map[string]int, error) {
 
 	// Check for any error that occurred during the iteration
 	if err = rows.Err(); err != nil {
-		log.Println(err)
+		logger.Println(err)
 		return map[string]int{}, map[string]int{}, err
 	}
 
 	// Print the map to verify the data
-	log.Println("Records from the database:", records)
-	log.Println("ActIds from the database:", actIDs)
+	logger.Println("Records from the database:", records)
+	logger.Println("ActIds from the database:", actIDs)
 	return records, actIDs, nil
 }
 
 func (d *Database) SaveLink(proj string, id int) error {
 	tx, err := d.Db.Begin()
 	if err != nil {
-		log.Println(err)
+		logger.Println(err)
 	}
 	stmt, err := tx.Prepare("INSERT INTO projeventlink(projcode, eventid) values(?, ?)")
 
 	if err != nil {
-		log.Fatal(err)
+		logger.Fatal(err)
 	}
 	defer stmt.Close()
 	_, err = stmt.Exec(proj, id)
@@ -624,7 +623,7 @@ func (d *Database) SaveLink(proj string, id int) error {
 	}
 	err = tx.Commit()
 	if err != nil {
-		log.Fatal(err)
+		logger.Fatal(err)
 	}
 	return nil
 }
@@ -632,12 +631,12 @@ func (d *Database) SaveLink(proj string, id int) error {
 func (d *Database) SaveAct(proj string, id int) error {
 	tx, err := d.Db.Begin()
 	if err != nil {
-		log.Println(err)
+		logger.Println(err)
 	}
 	stmt, err := tx.Prepare("UPDATE projeventlink SET activity = ? WHERE projcode = ?")
 
 	if err != nil {
-		log.Fatal(err)
+		logger.Fatal(err)
 	}
 	defer stmt.Close()
 	_, err = stmt.Exec(id, proj)
@@ -648,7 +647,7 @@ func (d *Database) SaveAct(proj string, id int) error {
 	}
 	err = tx.Commit()
 	if err != nil {
-		log.Fatal(err)
+		logger.Fatal(err)
 	}
 	return nil
 }

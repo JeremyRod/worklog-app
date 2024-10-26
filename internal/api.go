@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"runtime"
@@ -189,7 +188,7 @@ func doHTTP(username string, password string) error {
 	user2 := Auth{}
 	err = json.Unmarshal(postBody, &user2)
 	if err != nil {
-		log.Fatalln(err)
+		logger.Fatalln(err)
 	}
 	//We Read the response body on the line below.
 	// encr := json.NewEncoder(fr)
@@ -201,7 +200,7 @@ func doHTTP(username string, password string) error {
 	err = verifyStatus(StatusCode(Authenticate.StatusCode), true)
 	// body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		log.Println(err)
+		logger.Println(err)
 	}
 	return err
 }
@@ -267,7 +266,7 @@ func DoTaskSubmit(entries ...EntryRow) error {
 		//check for task submit status code
 		err = verifyStatus(StatusCode(respJson.StatusCode), false)
 		if err != nil {
-			log.Println(err)
+			logger.Println(err)
 		}
 		resp.Body.Close()
 		//log.Printf("%s", compDate)
@@ -312,7 +311,7 @@ func DoTaskModify(entry EntryRow, id int) {
 
 	err = verifyStatus(StatusCode(respJson.StatusCode), false)
 	if err != nil {
-		log.Println(err)
+		logger.Println(err)
 	}
 }
 
@@ -373,7 +372,7 @@ func doListActivities() error {
 	//encr.Encode(&ActResp)
 	err = verifyStatus(StatusCode(ActResp.StatusCode), false)
 	if err != nil {
-		log.Println(err)
+		logger.Println(err)
 	}
 	return nil
 }
@@ -389,6 +388,7 @@ func (d *Database) AddToTaskMap(projCode string, item list.Item) error {
 			if v.EventName == name.EventName {
 				ProjCodeToTask[projCode] = v.EventID
 				d.SaveLink(projCode, v.EventID)
+				logger.Print(projCode)
 				return nil
 			}
 		}
@@ -409,6 +409,7 @@ func (d *Database) AddToActMap(projCode string, act list.Item) error {
 			if v.ActName == name.ActName {
 				ProjCodeToAct[projCode] = v.ActivityID
 				d.SaveAct(projCode, v.ActivityID)
+				logger.Print(projCode)
 				return nil
 			}
 		}
@@ -426,16 +427,16 @@ func LoginGetTasks(formLogged *bool) bool {
 	username, exist := os.LookupEnv("SCOROUSER")
 	pass, existpass := os.LookupEnv("SCOROPASSWORD")
 	if (!exist || !existpass) && !*formLogged {
-		log.Println(exist, existpass)
+		logger.Println(exist, existpass)
 		return true
 	} else if *formLogged {
 		return false
 	} else {
 		if err := doHTTP(username, pass); err != nil {
-			log.Println(err)
+			logger.Println(err)
 		}
 		if err := doListEntries(); err != nil {
-			log.Println(err)
+			logger.Println(err)
 		}
 	}
 	return false
@@ -443,15 +444,15 @@ func LoginGetTasks(formLogged *bool) bool {
 
 func LoginGetTaskForm(formLogged *bool, username string, pass string) error {
 	if err := doHTTP(username, pass); err != nil {
-		log.Println(err)
+		logger.Println(err)
 		return err
 	}
 	if err := doListEntries(); err != nil {
-		log.Println(err)
+		logger.Println(err)
 		return err
 	}
 	if err := doListActivities(); err != nil {
-		log.Println(err)
+		logger.Println(err)
 		return err
 	}
 	*formLogged = true
