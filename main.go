@@ -524,10 +524,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				if ok {
 					// Get user token
+					//logger.Println(ents)
 					if err := i.DoTaskSubmit(ents...); err != nil {
 						m.errBuilder += err.Error()
+						submitFailed = true
+						break
 					}
 					// if check event codes needs some interaction, dont go to get state.
+					m.sumContent = ""
 					m.startDate = time.Time{}
 					m.endDate = time.Time{}
 					m.retState = Get
@@ -1255,7 +1259,6 @@ func CheckEventCodeMap(m *model, entries ...i.EntryRow) (bool, error) {
 	for j := 0; j < len(entries); j++ {
 		_, ok := i.ProjCodeToTask[entries[j].Entry.ProjCode]
 		//_, ok2 := i.ProjCodeToAct[entries[j].Entry.ProjCode]
-		logger.Println(entries[j].Entry.ProjCode)
 		// Add all entries that need linking
 		// the second ok check was making it so that submits failed unless all tasks had an activity.
 		if !ok {
