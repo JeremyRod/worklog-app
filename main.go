@@ -91,6 +91,8 @@ type model struct {
 	errBuilder string
 }
 
+var logger *log.Logger
+
 var (
 	titleStyle = func() lipgloss.Style {
 		b := lipgloss.RoundedBorder()
@@ -430,7 +432,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if items := m.list.Items(); len(items) != 0 {
 					item := items[m.list.Index()].(i.EntryRow)
 					if err := db.DeleteEntry(item.EntryId); err != nil {
-						log.Println(err)
+						logger.Println(err)
 					}
 					m.modRowID = 0
 					m.id -= 1
@@ -484,10 +486,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.list, cmd = m.list.Update(msg)
 	case Summary:
-		var (
-			cmd  tea.Cmd
-			cmds []tea.Cmd
-		)
 		switch msg := msg.(type) {
 		case tea.KeyMsg:
 			switch msg.String() {
@@ -504,7 +502,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "enter":
 				ents, err := db.QuerySummary(&m.startDate, &m.endDate)
 				if err != nil {
-					log.Println(err)
+					logger.Println(err)
 					m.state = Get
 					submitFailed = true
 					m.errBuilder = "Submit Summary Failed"
@@ -514,7 +512,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if check {
 					m.state = Login
 					m.retState = Summary
-					log.Println("Login failed/need creds")
+					logger.Println("Login failed/need creds")
 					break
 				}
 				m.retState = Summary
@@ -526,10 +524,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				if ok {
 					// Get user token
+					//logger.Println(ents)
 					if err := i.DoTaskSubmit(ents...); err != nil {
 						m.errBuilder += err.Error()
+						submitFailed = true
+						break
 					}
 					// if check event codes needs some interaction, dont go to get state.
+					m.sumContent = ""
 					m.startDate = time.Time{}
 					m.endDate = time.Time{}
 					m.retState = Get
@@ -622,7 +624,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					} else if s == "enter" && m.focusIndex == len(m.inputs)+2 {
 						err := db.QueryAndExport()
 						if err != nil {
-							log.Println(err)
+							logger.Println(err)
 						}
 					}
 
@@ -737,7 +739,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						items := m.list.Items()
 						item := items[m.list.Index()].(i.EntryRow)
 						if err := db.DeleteEntry(item.EntryId); err != nil {
-							log.Println(err)
+							logger.Println(err)
 						}
 						m.modRowID = 0
 						m.id -= 1
@@ -759,7 +761,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						if check {
 							m.state = Login
 							m.retState = Modify
-							log.Println("Login failed/need creds")
+							logger.Println("Login failed/need creds")
 							break
 						}
 						m.retState = Modify
@@ -1219,30 +1221,32 @@ var db i.Database = i.Database{Db: nil}
 func main() {
 	// Logger for dev
 	f, err := os.OpenFile("testlogfile.txt", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	logger = &log.Logger{}
 	if err != nil {
-		log.Fatalf("error opening file: %v", err)
+		logger.Fatalf("error opening file: %v", err)
 	}
 	defer f.Close()
-	log.SetFlags(log.LstdFlags | log.Lshortfile)
-	log.SetOutput(f)
+	logger.SetFlags(log.LstdFlags | log.Lshortfile)
+	logger.SetOutput(f)
+	i.SetLogger(logger)
 
 	if err := db.OpenDatabase(nil); err != nil {
-		log.Println(err)
+		logger.Println(err)
 	}
 
 	// Get the saved projevent links, errs will return empty map, system can still run.
 	i.ProjCodeToTask, i.ProjCodeToAct, err = db.QueryLinks()
 	if err != nil {
-		log.Println(err)
+		logger.Println(err)
 	}
 	err = godotenv.Load("user.env")
 	if err != nil {
-		log.Println("Error loading user.env file")
+		logger.Println("Error loading user.env file")
 	}
 
 	p := tea.NewProgram(initialModel(), tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
-		log.Printf("Alas, there's been an error: %v", err)
+		logger.Printf("Alas, there's been an error: %v", err)
 		os.Exit(1)
 	}
 	db.CloseDatabase()
@@ -1254,9 +1258,10 @@ func CheckEventCodeMap(m *model, entries ...i.EntryRow) (bool, error) {
 	check := true
 	for j := 0; j < len(entries); j++ {
 		_, ok := i.ProjCodeToTask[entries[j].Entry.ProjCode]
-		_, ok2 := i.ProjCodeToAct[entries[j].Entry.ProjCode]
+		//_, ok2 := i.ProjCodeToAct[entries[j].Entry.ProjCode]
 		// Add all entries that need linking
-		if !ok || !ok2 {
+		// the second ok check was making it so that submits failed unless all tasks had an activity.
+		if !ok {
 			check = false
 			items := i.TaskList.ConstructTaskList()
 			if len(items) == 0 {
