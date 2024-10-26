@@ -225,6 +225,7 @@ func DoTaskSubmit(entries ...EntryRow) error {
 		code := 0
 		if ProjCodeToTask[entries[i].Entry.ProjCode] == -1 {
 			// A skipped proj code go to next loop interation
+			logger.Println(entries[i].Entry.ProjCode, ProjCodeToTask[entries[i].Entry.ProjCode])
 			continue
 		}
 		if ProjCodeToAct[entries[i].Entry.ProjCode] != -1 {
@@ -261,14 +262,16 @@ func DoTaskSubmit(entries ...EntryRow) error {
 		respJson := ModifyResp{}
 		decoder := json.NewDecoder(resp.Body)
 		decoder.Decode(&respJson)
+		//encr := json.NewEncoder(fr)
 		//encr.Encode(&respJson)
 
+		// hard call close since the for loop wont trigger defer.
+		resp.Body.Close()
 		//check for task submit status code
 		err = verifyStatus(StatusCode(respJson.StatusCode), false)
 		if err != nil {
 			logger.Println(err)
 		}
-		resp.Body.Close()
 		//log.Printf("%s", compDate)
 		//DoTaskModify(entries[i], respJson.Data.TimeID)
 	}
@@ -388,7 +391,7 @@ func (d *Database) AddToTaskMap(projCode string, item list.Item) error {
 			if v.EventName == name.EventName {
 				ProjCodeToTask[projCode] = v.EventID
 				d.SaveLink(projCode, v.EventID)
-				logger.Print(projCode)
+				//logger.Print(projCode)
 				return nil
 			}
 		}
@@ -409,13 +412,13 @@ func (d *Database) AddToActMap(projCode string, act list.Item) error {
 			if v.ActName == name.ActName {
 				ProjCodeToAct[projCode] = v.ActivityID
 				d.SaveAct(projCode, v.ActivityID)
-				logger.Print(projCode)
+				//logger.Print(projCode)
 				return nil
 			}
 		}
 	case Item:
 		// We know this is
-		ProjCodeToTask[projCode] = -1
+		ProjCodeToAct[projCode] = -1
 		d.SaveAct(projCode, -1)
 		return nil
 	}
