@@ -50,7 +50,7 @@ jobs:
         GOARCH=${{ matrix.arch }}
         VERSION=${{ github.ref_name }}
         export CGO_ENABLED=1 
-        go build -ldflags "-X main.version=$(VERSION) -X main.gitCommit=$(env.GIT_SHORT_HASH)" -o worklog-$GOOS-$GOARCH-$VERSION
+        go build -ldflags "-X main.version=${{ env.VERSION }} -X main.gitCommit=${{ env.GIT_SHORT_HASH }}" -o worklog-$GOOS-$GOARCH-$VERSION
 
     - name: Build for macOS
       if: matrix.os == 'macos-latest'
@@ -60,7 +60,7 @@ jobs:
         VERSION=${{ github.ref_name }}
         GIT_COMMIT=$(git rev-parse --short HEAD)
         export CGO_ENABLED=1 
-        go build -ldflags "-X main.version=$(VERSION) -X main.gitCommit=$(env.GIT_SHORT_HASH)" -o worklog-$GOOS-$GOARCH-$VERSION
+        go build -ldflags "-X main.version=${{ env.VERSION }} -X main.gitCommit=${{ env.GIT_SHORT_HASH }}" -o worklog-$GOOS-$GOARCH-$VERSION
 
     - name: Build for Windows
       if: matrix.os == 'windows-latest'
