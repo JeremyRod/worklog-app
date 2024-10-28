@@ -1,5 +1,10 @@
 # Changelog
 
+## V1.1.4
+
+### Fixed
+- Login via env vars doesn't fetch activity list
+
 ## V1.1.3 
 
 ### Fixed 
