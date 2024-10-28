@@ -441,6 +441,9 @@ func LoginGetTasks(formLogged *bool) bool {
 		if err := doListEntries(); err != nil {
 			logger.Println(err)
 		}
+		if err := doListActivities(); err != nil {
+			logger.Println(err)
+		}
 	}
 	return false
 }
