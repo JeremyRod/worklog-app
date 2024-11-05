@@ -319,11 +319,11 @@ func DoTaskModify(entry EntryRow, id int) {
 }
 
 func doListEntries() error {
-	// var fr *os.File
-	// var err error
-	// if fr, err = os.Create("tasklistresp.json"); err != nil {
-	// 	panic(err)
-	// }
+	var fr *os.File
+	var err error
+	if fr, err = os.Create("tasklistresp.json"); err != nil {
+		panic(err)
+	}
 	postBody, _ := json.Marshal(map[string]any{
 		"lang":               "eng",
 		"company_account_id": Authenticate.Data.Settings.MasterCompanyAccount,
@@ -338,10 +338,10 @@ func doListEntries() error {
 	}
 	defer resp.Body.Close()
 
-	//encr := json.NewEncoder(fr)
+	encr := json.NewEncoder(fr)
 	decoder := json.NewDecoder(resp.Body)
 	decoder.Decode(&TaskList)
-	//encr.Encode(&TaskList)
+	encr.Encode(&TaskList)
 	err = verifyStatus(StatusCode(TaskList.StatusCode), false)
 	if err != nil {
 		return err
@@ -350,11 +350,11 @@ func doListEntries() error {
 }
 
 func doListActivities() error {
-	// var fr *os.File
-	// var err error
-	// if fr, err = os.Create("actresp.json"); err != nil {
-	// 	panic(err)
-	// }
+	var fr *os.File
+	var err error
+	if fr, err = os.Create("actresp.json"); err != nil {
+		panic(err)
+	}
 	postBody, _ := json.Marshal(map[string]any{
 		"lang":               "eng",
 		"company_account_id": Authenticate.Data.Settings.MasterCompanyAccount,
@@ -369,10 +369,10 @@ func doListActivities() error {
 	}
 	defer resp.Body.Close()
 
-	//encr := json.NewEncoder(fr)
+	encr := json.NewEncoder(fr)
 	decoder := json.NewDecoder(resp.Body)
 	decoder.Decode(&ActResp)
-	//encr.Encode(&ActResp)
+	encr.Encode(&ActResp)
 	err = verifyStatus(StatusCode(ActResp.StatusCode), false)
 	if err != nil {
 		logger.Println(err)
