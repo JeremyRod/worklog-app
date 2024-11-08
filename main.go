@@ -71,6 +71,9 @@ type model struct {
 	loginFocusIndex int
 	formLogged      bool
 
+	// Confirmation screen
+	confirmationIndex int
+
 	//Date selector view linked to summary
 	dateCursor  int
 	selectStart bool
@@ -131,33 +134,36 @@ var (
 				Align(lipgloss.Left).
 				BorderStyle(lipgloss.NormalBorder()).
 				BorderForeground(lipgloss.Color("69"))
-	focusedStyle             = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
-	blurredStyle             = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-	summaryTotalStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("#390099"))
-	summaryDateStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("#592e83"))
-	summaryProjStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("#9984d4"))
-	cursorStyle              = focusedStyle
-	noStyle                  = lipgloss.NewStyle()
-	helpStyle                = blurredStyle
-	cursorModeHelpStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
-	docStyle                 = lipgloss.NewStyle().Margin(4, 2, 0, 2)
-	focusedButton            = focusedStyle.Render("[ Submit ]")
-	blurredButton            = blurredStyle.Render("[ Submit ]")
-	focusDelete              = focusedStyle.Render("[ Delete ]")
-	blurDelete               = blurredStyle.Render("[ Delete ]")
-	focusCancel              = focusedStyle.Render("[ Cancel ]")
-	blurCancel               = blurredStyle.Render("[ Cancel ]")
-	focusSave                = focusedStyle.Render("[ Save ]")
-	blurSave                 = blurredStyle.Render("[ Save ]")
-	focusUpload              = focusedStyle.Render("[ Upload ]")
-	blurUpload               = blurredStyle.Render("[ Upload ]")
-	focusImport              = focusedStyle.Render("[ Import ]")
-	blurImport               = blurredStyle.Render("[ Import ]")
-	focusExport              = focusedStyle.Render("[ Export ]")
-	blurExport               = blurredStyle.Render("[ Export ]")
-	focusUnlink              = focusedStyle.Render("[ Unlink ]")
-	blurUnlink               = blurredStyle.Render("[ Unlink ]")
-	submitFailed        bool = false
+	focusedStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
+	blurredStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	summaryTotalStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#390099"))
+	summaryDateStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#592e83"))
+	summaryProjStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#9984d4"))
+	cursorStyle         = focusedStyle
+	noStyle             = lipgloss.NewStyle()
+	helpStyle           = blurredStyle
+	cursorModeHelpStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
+	docStyle            = lipgloss.NewStyle().Margin(4, 2, 0, 2)
+	focusedButton       = focusedStyle.Render("[ Submit ]")
+	blurredButton       = blurredStyle.Render("[ Submit ]")
+	focusDelete         = focusedStyle.Render("[ Delete ]")
+	blurDelete          = blurredStyle.Render("[ Delete ]")
+	focusCancel         = focusedStyle.Render("[ Cancel ]")
+	blurCancel          = blurredStyle.Render("[ Cancel ]")
+	focusSave           = focusedStyle.Render("[ Save ]")
+	blurSave            = blurredStyle.Render("[ Save ]")
+	focusUpload         = focusedStyle.Render("[ Upload ]")
+	blurUpload          = blurredStyle.Render("[ Upload ]")
+	focusImport         = focusedStyle.Render("[ Import ]")
+	blurImport          = blurredStyle.Render("[ Import ]")
+	focusExport         = focusedStyle.Render("[ Export ]")
+	blurExport          = blurredStyle.Render("[ Export ]")
+	focusUnlink         = focusedStyle.Render("[ Unlink ]")
+	blurUnlink          = blurredStyle.Render("[ Unlink ]")
+	focusConfirm        = focusedStyle.Render("[ Confirm ]")
+	blurConfirm         = blurredStyle.Render("[ Confirm ]")
+
+	submitFailed bool = false
 )
 
 const (
@@ -178,6 +184,7 @@ const (
 	Login
 	DateSelect
 	Act
+	Confirmation
 )
 
 type SubState int
@@ -525,6 +532,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if ok {
 					// Get user token
 					//logger.Println(ents)
+
+					// This should now go to confirmation state and perform the required task once accepted
 					if err := i.DoTaskSubmit(ents...); err != nil {
 						m.errBuilder += err.Error()
 						submitFailed = true
@@ -536,6 +545,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.endDate = time.Time{}
 					m.retState = Get
 					m.state = Get
+
+					// m.retState = Summary
+					// m.state = Confirmation
 				}
 			}
 		case tea.WindowSizeMsg:
@@ -969,6 +981,43 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		m.listAct, cmd = m.listAct.Update(msg)
+	case Confirmation:
+		switch msg := msg.(type) {
+		case tea.WindowSizeMsg:
+			h, v := docStyle.GetFrameSize()
+			m.winH = msg.Height - v
+			m.winW = msg.Width - h
+			return m, nil
+
+		case tea.KeyMsg:
+			switch key := msg.String(); key {
+			case "ctrl+c":
+				return m, tea.Quit
+
+			case "up", "down", "left", "right, enter":
+				if key == "enter" {
+					if m.confirmationIndex == 0 {
+						// This is confirming the upload
+
+					} else {
+						// This is cancelling the upload
+					}
+				}
+				// Cycle indexes
+				if key == "up" || key == "left" {
+					m.confirmationIndex--
+				} else {
+					m.confirmationIndex++
+				}
+
+				if m.confirmationIndex > 1 { // only two options, will hardcode
+					m.confirmationIndex = 0
+				} else if m.confirmationIndex < 0 {
+					m.confirmationIndex = 1
+				}
+			}
+		}
+
 	case Login:
 		switch msg := msg.(type) {
 		case tea.WindowSizeMsg:
@@ -1159,7 +1208,18 @@ func (m model) View() string {
 		}
 	case Summary:
 		fmt.Fprintf(&b, "\n%s\n%s\n%s", m.headerView(), m.viewport.View(), m.footerView()) //, m.footerView())
+
 		//}
+	case Confirmation:
+		button1 := blurConfirm
+		if m.confirmationIndex == 0 {
+			button1 = focusConfirm
+		}
+		button2 := blurCancel
+		if m.confirmationIndex == 1 {
+			button1 = focusCancel
+		}
+		b.WriteString(helpStyle.Render(fmt.Sprintf("\n\n\tDo you want to continue?\n\t\t%s\t\t%s\n", button1, button2)))
 	case Login:
 		for i := range m.loginInputs {
 			b.WriteString(m.loginInputs[i].View())
