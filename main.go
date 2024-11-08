@@ -907,10 +907,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.startDate = time.Time{}
 				m.endDate = time.Time{}
 				m.state = Get
+				m.choice = nil // clear task list on early leave from task state
 
 			case "enter":
 				// The pick from the task will then go straight to the act choice
 				item := m.listTask.SelectedItem()
+				logger.Println(item)
 				db.AddToTaskMap(m.choice[m.index], item)
 				if m.index != len(m.choice)-1 {
 					items := i.TaskList.ConstructTaskList()
@@ -943,6 +945,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.startDate = time.Time{}
 				m.endDate = time.Time{}
 				m.state = Get
+				m.choice = nil // clear choice list when early leave from actlist
 
 			case "enter":
 				// If from modify go back to modify
