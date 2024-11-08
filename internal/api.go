@@ -136,8 +136,8 @@ type Data struct {
 	Comp          string `json:"completed_datetime"`
 }
 
-func (d Data) FilterValue() string { return d.EventName }
-func (d Data) Description() string { return d.EventName }
+func (d Data) FilterValue() string { return d.ProjectName }
+func (d Data) Description() string { return d.ProjectName }
 func (d Data) Title() string {
 	return fmt.Sprintf("Project: %s Task: %s", d.ProjectName, d.EventName)
 }
@@ -388,7 +388,7 @@ func (d *Database) AddToTaskMap(projCode string, item list.Item) error {
 	switch name := item.(type) {
 	case Data:
 		for _, v := range TaskList.Data {
-			if v.EventName == name.EventName {
+			if v.EventID == name.EventID {
 				ProjCodeToTask[projCode] = v.EventID
 				d.SaveLink(projCode, v.EventID)
 				//logger.Print(projCode)
@@ -409,7 +409,7 @@ func (d *Database) AddToActMap(projCode string, act list.Item) error {
 	switch name := act.(type) {
 	case Activity:
 		for _, v := range ActResp.Data {
-			if v.ActName == name.ActName {
+			if v.ActivityID == name.ActivityID {
 				ProjCodeToAct[projCode] = v.ActivityID
 				d.SaveAct(projCode, v.ActivityID)
 				//logger.Print(projCode)
