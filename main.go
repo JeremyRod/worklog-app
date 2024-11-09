@@ -48,6 +48,7 @@ type model struct {
 	sumContent string
 	viewport   viewport.Model
 	ready      bool
+	ents       []i.EntryRow
 
 	// Entries List view
 	list       list.Model
@@ -60,7 +61,7 @@ type model struct {
 	choice   []string
 	index    int
 
-	// Retreived tasks list view
+	// Retreived act list view
 	listAct list.Model
 	//actChoice []string
 	actIndex int
@@ -70,6 +71,9 @@ type model struct {
 	loginInputs     []textinput.Model
 	loginFocusIndex int
 	formLogged      bool
+
+	// Confirmation screen
+	confirmationIndex int
 
 	//Date selector view linked to summary
 	dateCursor  int
@@ -131,33 +135,36 @@ var (
 				Align(lipgloss.Left).
 				BorderStyle(lipgloss.NormalBorder()).
 				BorderForeground(lipgloss.Color("69"))
-	focusedStyle             = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
-	blurredStyle             = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-	summaryTotalStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("#390099"))
-	summaryDateStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("#592e83"))
-	summaryProjStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("#9984d4"))
-	cursorStyle              = focusedStyle
-	noStyle                  = lipgloss.NewStyle()
-	helpStyle                = blurredStyle
-	cursorModeHelpStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
-	docStyle                 = lipgloss.NewStyle().Margin(4, 2, 0, 2)
-	focusedButton            = focusedStyle.Render("[ Submit ]")
-	blurredButton            = blurredStyle.Render("[ Submit ]")
-	focusDelete              = focusedStyle.Render("[ Delete ]")
-	blurDelete               = blurredStyle.Render("[ Delete ]")
-	focusCancel              = focusedStyle.Render("[ Cancel ]")
-	blurCancel               = blurredStyle.Render("[ Cancel ]")
-	focusSave                = focusedStyle.Render("[ Save ]")
-	blurSave                 = blurredStyle.Render("[ Save ]")
-	focusUpload              = focusedStyle.Render("[ Upload ]")
-	blurUpload               = blurredStyle.Render("[ Upload ]")
-	focusImport              = focusedStyle.Render("[ Import ]")
-	blurImport               = blurredStyle.Render("[ Import ]")
-	focusExport              = focusedStyle.Render("[ Export ]")
-	blurExport               = blurredStyle.Render("[ Export ]")
-	focusUnlink              = focusedStyle.Render("[ Unlink ]")
-	blurUnlink               = blurredStyle.Render("[ Unlink ]")
-	submitFailed        bool = false
+	focusedStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
+	blurredStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	summaryTotalStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#390099"))
+	summaryDateStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#592e83"))
+	summaryProjStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#9984d4"))
+	cursorStyle         = focusedStyle
+	noStyle             = lipgloss.NewStyle()
+	helpStyle           = blurredStyle
+	cursorModeHelpStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
+	docStyle            = lipgloss.NewStyle().Margin(4, 2, 0, 2)
+	focusedButton       = focusedStyle.Render("[ Submit ]")
+	blurredButton       = blurredStyle.Render("[ Submit ]")
+	focusDelete         = focusedStyle.Render("[ Delete ]")
+	blurDelete          = blurredStyle.Render("[ Delete ]")
+	focusCancel         = focusedStyle.Render("[ Cancel ]")
+	blurCancel          = blurredStyle.Render("[ Cancel ]")
+	focusSave           = focusedStyle.Render("[ Save ]")
+	blurSave            = blurredStyle.Render("[ Save ]")
+	focusUpload         = focusedStyle.Render("[ Upload ]")
+	blurUpload          = blurredStyle.Render("[ Upload ]")
+	focusImport         = focusedStyle.Render("[ Import ]")
+	blurImport          = blurredStyle.Render("[ Import ]")
+	focusExport         = focusedStyle.Render("[ Export ]")
+	blurExport          = blurredStyle.Render("[ Export ]")
+	focusUnlink         = focusedStyle.Render("[ Unlink ]")
+	blurUnlink          = blurredStyle.Render("[ Unlink ]")
+	focusConfirm        = focusedStyle.Render("[ Confirm ]")
+	blurConfirm         = blurredStyle.Render("[ Confirm ]")
+
+	submitFailed bool = false
 )
 
 const (
@@ -178,6 +185,7 @@ const (
 	Login
 	DateSelect
 	Act
+	Confirmation
 )
 
 type SubState int
@@ -186,6 +194,24 @@ const (
 	ListView SubState = iota
 	NotesView
 )
+
+type uploadMsg int
+
+type errMsg struct{ err error }
+
+func uploadCmd(m *model, ents ...i.EntryRow) tea.Cmd {
+	return func() tea.Msg {
+		//This should now go to confirmation state and perform the required task once accepted
+		if err := i.DoTaskSubmit(ents...); err != nil {
+			m.errBuilder += err.Error()
+			submitFailed = true
+			return errMsg{err: err}
+		}
+		// if check event codes needs some interaction, dont go to get state.
+		m.resetUpload()
+		return uploadMsg(1)
+	}
+}
 
 func initialModel() model {
 	m := model{
@@ -207,6 +233,7 @@ func initialModel() model {
 	tt := time.Now()
 
 	items := []list.Item{}
+	m.ents = nil
 
 	m.list = list.New(items, list.NewDefaultDelegate(), 0, 0)
 	m.list.Title = "Worklog Entries"
@@ -330,6 +357,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch m.state {
 	case Get:
 		switch msg := msg.(type) {
+		case errMsg:
+			logger.Println(msg.err.Error())
+			m.resetUpload()
+			m.ents = nil
+		case uploadMsg:
+			logger.Println("Summary uploaded")
+			m.resetUpload()
+			m.ents = nil
 		case tea.WindowSizeMsg:
 			h, v := docStyle.GetFrameSize()
 			m.winH = msg.Height - v
@@ -493,14 +528,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Quit
 
 			case "tab":
-				m.sumContent = ""
-				m.viewport.SetContent(m.sumContent)
-				m.startDate = time.Time{}
-				m.endDate = time.Time{}
-				m.state = Get
+				m.resetUpload()
 
 			case "enter":
-				ents, err := db.QuerySummary(&m.startDate, &m.endDate)
+				var err error
+				m.ents, err = db.QuerySummary(&m.startDate, &m.endDate)
 				if err != nil {
 					logger.Println(err)
 					m.state = Get
@@ -516,26 +548,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					break
 				}
 				m.retState = Summary
-				ok, err := CheckEventCodeMap(&m, ents...)
+				ok, err := CheckEventCodeMap(&m, m.ents...)
 				if err != nil {
 					m.errBuilder += err.Error()
 					submitFailed = true
 					break
 				}
 				if ok {
-					// Get user token
-					//logger.Println(ents)
-					if err := i.DoTaskSubmit(ents...); err != nil {
-						m.errBuilder += err.Error()
-						submitFailed = true
-						break
-					}
-					// if check event codes needs some interaction, dont go to get state.
-					m.sumContent = ""
-					m.startDate = time.Time{}
-					m.endDate = time.Time{}
-					m.retState = Get
-					m.state = Get
+					//cmd = confirmUpload
+					m.state = Confirmation
 				}
 			}
 		case tea.WindowSizeMsg:
@@ -902,13 +923,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Quit
 
 			case "tab":
-				m.sumContent = ""
-				m.viewport.SetContent(m.sumContent)
-				m.startDate = time.Time{}
-				m.endDate = time.Time{}
-				m.state = Get
-				m.choice = nil // clear task list on early leave from task state
-
+				m.resetUpload()
 			case "enter":
 				// The pick from the task will then go straight to the act choice
 				item := m.listTask.SelectedItem()
@@ -940,12 +955,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Quit
 
 			case "tab":
-				m.sumContent = ""
-				m.viewport.SetContent(m.sumContent)
-				m.startDate = time.Time{}
-				m.endDate = time.Time{}
-				m.state = Get
-				m.choice = nil // clear choice list when early leave from actlist
+				m.resetUpload()
 
 			case "enter":
 				// If from modify go back to modify
@@ -972,6 +982,44 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		m.listAct, cmd = m.listAct.Update(msg)
+	case Confirmation:
+		switch msg := msg.(type) {
+		case tea.WindowSizeMsg:
+			h, v := docStyle.GetFrameSize()
+			m.winH = msg.Height - v
+			m.winW = msg.Width - h
+			return m, nil
+
+		case tea.KeyMsg:
+			switch key := msg.String(); key {
+			case "ctrl+c":
+				return m, tea.Quit
+
+			case "up", "down", "left", "right", "enter":
+				if key == "enter" {
+					if m.confirmationIndex == 0 {
+						m.state = Get
+						cmd = uploadCmd(&m, m.ents...)
+						m.resetUpload()
+					} else {
+						m.resetUpload()
+					}
+				}
+				// Cycle indexes
+				if key == "up" || key == "left" {
+					m.confirmationIndex--
+				} else {
+					m.confirmationIndex++
+				}
+
+				if m.confirmationIndex > 1 { // only two options, will hardcode
+					m.confirmationIndex = 0
+				} else if m.confirmationIndex < 0 {
+					m.confirmationIndex = 1
+				}
+			}
+		}
+
 	case Login:
 		switch msg := msg.(type) {
 		case tea.WindowSizeMsg:
@@ -1162,7 +1210,18 @@ func (m model) View() string {
 		}
 	case Summary:
 		fmt.Fprintf(&b, "\n%s\n%s\n%s", m.headerView(), m.viewport.View(), m.footerView()) //, m.footerView())
+
 		//}
+	case Confirmation:
+		button1 := blurConfirm
+		if m.confirmationIndex == 0 {
+			button1 = focusConfirm
+		}
+		button2 := blurCancel
+		if m.confirmationIndex == 1 {
+			button2 = focusCancel
+		}
+		b.WriteString(helpStyle.Render(fmt.Sprintf("\n\t\t\tDo you want to continue?\n\n\t\t%s\t\t  %s\n", button1, button2)))
 	case Login:
 		for i := range m.loginInputs {
 			b.WriteString(m.loginInputs[i].View())
@@ -1416,4 +1475,15 @@ func max(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func (m *model) resetUpload() { // used to reset all variable that are used when uploading from summary view.
+	m.state = Get
+	m.retState = Get
+	m.sumContent = ""
+	m.viewport.SetContent(m.sumContent)
+	m.startDate = time.Time{}
+	m.endDate = time.Time{}
+	// this will reset the list of selected upload items.
+	m.choice = nil
 }
