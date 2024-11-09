@@ -912,7 +912,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "enter":
 				// The pick from the task will then go straight to the act choice
 				item := m.listTask.SelectedItem()
-				logger.Println(item)
+				//logger.Println(item)
 				db.AddToTaskMap(m.choice[m.index], item)
 				if m.index != len(m.choice)-1 {
 					items := i.TaskList.ConstructTaskList()
