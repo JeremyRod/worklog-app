@@ -985,7 +985,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 					} else {
 						// This is cancelling the upload
-						m.resetUpload()
 					}
 				}
 				// Cycle indexes
