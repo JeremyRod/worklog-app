@@ -48,6 +48,7 @@ type model struct {
 	sumContent string
 	viewport   viewport.Model
 	ready      bool
+	ents       []i.EntryRow
 
 	// Entries List view
 	list       list.Model
@@ -60,7 +61,7 @@ type model struct {
 	choice   []string
 	index    int
 
-	// Retreived tasks list view
+	// Retreived act list view
 	listAct list.Model
 	//actChoice []string
 	actIndex int
@@ -194,6 +195,24 @@ const (
 	NotesView
 )
 
+type uploadMsg int
+
+type errMsg struct{ err error }
+
+func uploadCmd(m *model, ents ...i.EntryRow) tea.Cmd {
+	return func() tea.Msg {
+		//This should now go to confirmation state and perform the required task once accepted
+		if err := i.DoTaskSubmit(ents...); err != nil {
+			m.errBuilder += err.Error()
+			submitFailed = true
+			return errMsg{err: err}
+		}
+		// if check event codes needs some interaction, dont go to get state.
+		m.resetUpload()
+		return uploadMsg(1)
+	}
+}
+
 func initialModel() model {
 	m := model{
 		inputs:       make([]textinput.Model, i.Submit),
@@ -214,6 +233,7 @@ func initialModel() model {
 	tt := time.Now()
 
 	items := []list.Item{}
+	m.ents = nil
 
 	m.list = list.New(items, list.NewDefaultDelegate(), 0, 0)
 	m.list.Title = "Worklog Entries"
@@ -337,6 +357,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch m.state {
 	case Get:
 		switch msg := msg.(type) {
+		case errMsg:
+			logger.Println(msg.err.Error())
+			m.resetUpload()
+			m.ents = nil
+		case uploadMsg:
+			logger.Println("Summary uploaded")
+			m.resetUpload()
+			m.ents = nil
 		case tea.WindowSizeMsg:
 			h, v := docStyle.GetFrameSize()
 			m.winH = msg.Height - v
@@ -503,7 +531,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.resetUpload()
 
 			case "enter":
-				ents, err := db.QuerySummary(&m.startDate, &m.endDate)
+				var err error
+				m.ents, err = db.QuerySummary(&m.startDate, &m.endDate)
 				if err != nil {
 					logger.Println(err)
 					m.state = Get
@@ -519,27 +548,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					break
 				}
 				m.retState = Summary
-				ok, err := CheckEventCodeMap(&m, ents...)
+				ok, err := CheckEventCodeMap(&m, m.ents...)
 				if err != nil {
 					m.errBuilder += err.Error()
 					submitFailed = true
 					break
 				}
 				if ok {
-					// Get user token
-					//logger.Println(ents)
-
-					//This should now go to confirmation state and perform the required task once accepted
-					if err := i.DoTaskSubmit(ents...); err != nil {
-						m.errBuilder += err.Error()
-						submitFailed = true
-						break
-					}
-					// if check event codes needs some interaction, dont go to get state.
-					m.resetUpload()
-
-					// m.retState = Summary
-					// m.state = Confirmation
+					//cmd = confirmUpload
+					m.state = Confirmation
 				}
 			}
 		case tea.WindowSizeMsg:
@@ -978,13 +995,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "ctrl+c":
 				return m, tea.Quit
 
-			case "up", "down", "left", "right, enter":
+			case "up", "down", "left", "right", "enter":
 				if key == "enter" {
 					if m.confirmationIndex == 0 {
-						// This is confirming the upload
-
+						m.state = Get
+						cmd = uploadCmd(&m, m.ents...)
+						m.resetUpload()
 					} else {
-						// This is cancelling the upload
+						m.resetUpload()
 					}
 				}
 				// Cycle indexes
