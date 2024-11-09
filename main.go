@@ -500,11 +500,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Quit
 
 			case "tab":
-				m.sumContent = ""
-				m.viewport.SetContent(m.sumContent)
-				m.startDate = time.Time{}
-				m.endDate = time.Time{}
-				m.state = Get
+				m.resetUpload()
 
 			case "enter":
 				ents, err := db.QuerySummary(&m.startDate, &m.endDate)
@@ -533,18 +529,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					// Get user token
 					//logger.Println(ents)
 
-					// This should now go to confirmation state and perform the required task once accepted
+					//This should now go to confirmation state and perform the required task once accepted
 					if err := i.DoTaskSubmit(ents...); err != nil {
 						m.errBuilder += err.Error()
 						submitFailed = true
 						break
 					}
 					// if check event codes needs some interaction, dont go to get state.
-					m.sumContent = ""
-					m.startDate = time.Time{}
-					m.endDate = time.Time{}
-					m.retState = Get
-					m.state = Get
+					m.resetUpload()
 
 					// m.retState = Summary
 					// m.state = Confirmation
@@ -914,13 +906,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Quit
 
 			case "tab":
-				m.sumContent = ""
-				m.viewport.SetContent(m.sumContent)
-				m.startDate = time.Time{}
-				m.endDate = time.Time{}
-				m.state = Get
-				m.choice = nil // clear task list on early leave from task state
-
+				m.resetUpload()
 			case "enter":
 				// The pick from the task will then go straight to the act choice
 				item := m.listTask.SelectedItem()
@@ -952,12 +938,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Quit
 
 			case "tab":
-				m.sumContent = ""
-				m.viewport.SetContent(m.sumContent)
-				m.startDate = time.Time{}
-				m.endDate = time.Time{}
-				m.state = Get
-				m.choice = nil // clear choice list when early leave from actlist
+				m.resetUpload()
 
 			case "enter":
 				// If from modify go back to modify
@@ -1004,6 +985,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 					} else {
 						// This is cancelling the upload
+						m.resetUpload()
 					}
 				}
 				// Cycle indexes
@@ -1220,9 +1202,9 @@ func (m model) View() string {
 		}
 		button2 := blurCancel
 		if m.confirmationIndex == 1 {
-			button1 = focusCancel
+			button2 = focusCancel
 		}
-		b.WriteString(helpStyle.Render(fmt.Sprintf("\n\n\tDo you want to continue?\n\t\t%s\t\t%s\n", button1, button2)))
+		b.WriteString(helpStyle.Render(fmt.Sprintf("\n\t\t\tDo you want to continue?\n\n\t\t%s\t\t  %s\n", button1, button2)))
 	case Login:
 		for i := range m.loginInputs {
 			b.WriteString(m.loginInputs[i].View())
@@ -1476,4 +1458,15 @@ func max(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func (m *model) resetUpload() { // used to reset all variable that are used when uploading from summary view.
+	m.state = Get
+	m.retState = Get
+	m.sumContent = ""
+	m.viewport.SetContent(m.sumContent)
+	m.startDate = time.Time{}
+	m.endDate = time.Time{}
+	// this will reset the list of selected upload items.
+	m.choice = nil
 }
