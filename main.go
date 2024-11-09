@@ -1318,12 +1318,14 @@ func main() {
 func CheckEventCodeMap(m *model, entries ...i.EntryRow) (bool, error) {
 	// Check to see if we have all proj codes mapped to an event_id
 	check := true
+	added := make(map[string]bool, 5)
 	for j := 0; j < len(entries); j++ {
 		_, ok := i.ProjCodeToTask[entries[j].Entry.ProjCode]
 		//_, ok2 := i.ProjCodeToAct[entries[j].Entry.ProjCode]
 		// Add all entries that need linking
 		// the second ok check was making it so that submits failed unless all tasks had an activity.
-		if !ok {
+		if !ok && !added[entries[j].Entry.ProjCode] {
+			added[entries[j].Entry.ProjCode] = true
 			check = false
 			items := i.TaskList.ConstructTaskList()
 			if len(items) == 0 {
