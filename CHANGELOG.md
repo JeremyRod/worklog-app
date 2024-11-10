@@ -1,12 +1,13 @@
 # Changelog
 
-## Unreleased
+## V1.1.5
 
 ### Added
--
+- Confirmation on summary view submission to reduce unintended submits
 
 ### Fixed
 - Different proj codes have same task id even though specified differently.
+- Stop additional checks for linking proj code to scoro task when submitting with summary view.
 
 
 ## V1.1.4
