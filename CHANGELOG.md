@@ -1,5 +1,10 @@
 # Changelog
 
+## V1.1.6
+
+### Fixed
+- Summary view entry linking offset issue
+
 ## V1.1.5
 
 ### Added
