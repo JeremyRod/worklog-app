@@ -929,12 +929,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				item := m.listTask.SelectedItem()
 				//logger.Println(item)
 				db.AddToTaskMap(m.choice[m.index], item)
-				if m.index != len(m.choice)-1 {
+				m.index++
+				if m.index < len(m.choice) {
 					items := i.TaskList.ConstructTaskList()
 					m.listTask = list.New(items, list.NewDefaultDelegate(), 0, 0)
 					m.listTask.Title = fmt.Sprintf("Choose a task for %s", m.choice[m.index])
 					m.listTask.SetSize(m.winW, m.winH)
-					m.index++
 					break
 				}
 				m.index = 0
@@ -1334,7 +1334,7 @@ func CheckEventCodeMap(m *model, entries ...i.EntryRow) (bool, error) {
 			}
 			m.choice = append(m.choice, entries[j].Entry.ProjCode)
 			m.listTask = list.New(items, list.NewDefaultDelegate(), 0, 0)
-			m.listTask.Title = fmt.Sprintf("Choose a task for %s", entries[j].Entry.ProjCode)
+			m.listTask.Title = fmt.Sprintf("Choose a task for %s", m.choice[0])
 			m.state = Task
 			m.listTask.SetSize(m.winW, m.winH)
 
