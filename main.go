@@ -35,6 +35,9 @@ type model struct {
 	// New Notes text area
 	textarea textarea.Model
 
+	// Timer for periodic timeReset
+	resetTimer *time.Timer
+
 	// Modify inputs
 	modInputs     []textinput.Model // items for the modify list, same as the new list.
 	modFocusIndex int               // Focus index for Modify List
@@ -227,6 +230,7 @@ func initialModel() model {
 		currentDate:  time.Now(),
 		startDate:    time.Time{},
 		endDate:      time.Time{},
+		resetTimer:   nil,
 	}
 
 	var t textinput.Model
@@ -441,7 +445,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.sumContent += summaryTotalStyle.Render(fmt.Sprintf("Total Hours in the Day: %02d:%02d\n", int(dayTotal.Hours()), int(dayTotal.Minutes())%60))
 				clear(desc)
 				clear(duration)
-				dayTotal, _ = time.ParseDuration("0s")
+				dayTotal, _ = time.ParseDuration("0s") // probs dont need this
 
 				headerHeight := lipgloss.Height(m.headerView())
 				footerHeight := lipgloss.Height(m.footerView())
@@ -1040,6 +1044,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						submitFailed = true
 						break
 					}
+					// Start periodic timeReset after successful login
+					if m.resetTimer != nil {
+						m.resetTimer.Stop()
+					}
+					m.resetTimer = time.NewTimer(12 * time.Hour) // Reset every 12 hours
+					go func() {
+						for range m.resetTimer.C {
+							m.timeReset()
+							m.resetTimer.Reset(12 * time.Hour)
+						}
+					}()
 					m.state = m.retState
 				} else if keypress == "enter" && m.loginFocusIndex == len(m.loginInputs)+1 {
 					m.resetLoginState()
@@ -1297,7 +1312,7 @@ func main() {
 	}
 
 	// Get the saved projevent links, errs will return empty map, system can still run.
-	i.ProjCodeToTask, i.ProjCodeToAct, err = db.QueryLinks()
+	i.ProjCodeToTask, i.ProjCodeToAct, _, err = db.QueryLinks()
 	if err != nil {
 		logger.Println(err)
 	}
@@ -1488,4 +1503,72 @@ func (m *model) resetUpload() { // used to reset all variable that are used when
 	m.endDate = time.Time{}
 	// this will reset the list of selected upload items.
 	m.choice = nil
+}
+
+// Adding this functionality to fix issues with new buckets at the end/beginning of a new month.
+// Does running this in a seperate goroutine line up issues for race conditions? Probably
+// should this just be called any time the user logs in? since that would be a fresh fetch?
+// What if the user has had the program open for a while.
+// Add a bool to determine if it should.
+func (m *model) timeReset() {
+	t := time.Now()
+	year, month, _ := t.Date()
+	lastDay := time.Date(year, month, 0, 0, 0, 0, 0, t.Location())
+	firstDay := time.Date(year, month, 1, 0, 0, 0, 0, t.Location())
+	// if the day matches the first day of the current month
+	taskmap, _, updateFlag, err := db.QueryLinks()
+	update := false
+	// check we haven't already done this today. can use any since they all match.
+	// TODO: rewrite if we can have some rows as true and false at the same time.
+	for _, val := range updateFlag {
+		update = val
+		break
+	}
+	if t.Day() == firstDay.Day() && update {
+		// reset task and act list and regrab.
+		// if form logged is set this means we have a user_token from scoro, dont know how long this lasts, assume we are good.
+		cont := i.LoginGetTasks(&m.formLogged)
+		//TODO: review this: if the return is true this means we aren't logged, and we have no creds saved.
+		// we would need to prompt the user for these which wont work if this happens when they are away.
+		// at that point we ignore and use what list we have.
+		if !cont {
+			i.RefetchLists(&m.formLogged)
+			i.ActResp = i.ActivityResp{}
+			i.TaskList = i.TaskListResp{}
+		}
+
+		// check if any of the tasks that are linked are no longer in the task list
+		// if yes, delete the links.
+		//taskmap, _, _, err := db.QueryLinks()
+		if err != nil {
+			logger.Println("query link fail")
+		}
+		// Keep track of project codes that should have update flag set to false
+		keptProjCodes := make([]string, 0)
+		for k, v := range taskmap {
+			contained := false
+			for _, vv := range i.TaskList.Data {
+				if v == vv.EventID {
+					// This would mean that the task is in this month task list for the user
+					// Probably means that the scoro bucket hasnt changed, this should not be unlinked so that code isnt auto uploaded to the wrong one.
+					contained = true
+					keptProjCodes = append(keptProjCodes, k)
+					break
+				}
+			}
+			if !contained {
+				db.DeleteLink(k)
+			}
+		}
+		// Set update flag to false for all kept links
+		if err := db.SetUpdateFlagFalse(keptProjCodes); err != nil {
+			logger.Println("Failed to set update flag to false:", err)
+		}
+		// if the day matches the last day of this month.
+	} else if t.Day() == lastDay.Day() {
+		// Set update flag to true for all links on last day of month
+		if err := db.SetUpdateFlag(); err != nil {
+			logger.Println("Failed to set update flag:", err)
+		}
+	}
 }

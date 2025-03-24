@@ -465,6 +465,21 @@ func LoginGetTaskForm(formLogged *bool, username string, pass string) error {
 	return nil
 }
 
+func RefetchLists(formLogged *bool) error {
+	if !*formLogged {
+		return fmt.Errorf("not logged in")
+	}
+	if err := doListEntries(); err != nil {
+		logger.Println(err)
+		return err
+	}
+	if err := doListActivities(); err != nil {
+		logger.Println(err)
+		return err
+	}
+	return nil
+}
+
 func formatISO8601(entry EntryRow) string {
 	date := entry.Entry.Date.Format("2006-01-02")
 	_, zone := time.Now().Local().Zone()
