@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -465,6 +466,8 @@ func (d *Database) CreateEventDatabase() error {
 		(id INTEGER PRIMARY KEY, 
 		projcode TEXT NOT NULL, 
 		eventid INTEGER NOT NULL,
+		activity INTEGER,
+		updateflag BOOLEAN DEFAULT FALSE,
 		UNIQUE(projcode)
 		);`
 	_, err := d.Db.Exec(sqlStmt)
@@ -472,7 +475,7 @@ func (d *Database) CreateEventDatabase() error {
 		logger.Fatalf("%q: %s\n", err, sqlStmt)
 		//return fmt.Errorf("db stmt fail %q: %s", err, sqlStmt)
 	}
-	logger.Println("Table 'users' created successfully (or already exists)")
+	logger.Println("Table 'projeventlink' created successfully (or already exists)")
 	return nil
 }
 
@@ -485,7 +488,7 @@ func (d *Database) AlterProjTable() error {
 	}
 	defer rows.Close()
 
-	var exists bool
+	var actExist, updateFlagExist bool
 	for rows.Next() {
 		var cid int
 		var name, ctype string
@@ -498,14 +501,16 @@ func (d *Database) AlterProjTable() error {
 			return err
 		}
 
-		// Check if the column exists
+		// Check if the columns exist
 		if name == "activity" {
-			exists = true
-			break
+			actExist = true
+		}
+		if name == "updateflag" {
+			updateFlagExist = true
 		}
 	}
 
-	if !exists {
+	if !actExist {
 		// Add the column since it doesn't exist
 		query := "ALTER TABLE projeventlink ADD COLUMN activity INTEGER;"
 		_, err = d.Db.Exec(query)
@@ -515,6 +520,18 @@ func (d *Database) AlterProjTable() error {
 		logger.Println("Column activity added to table projeventlink")
 	} else {
 		logger.Println("Column activity already exists in table projeventlink")
+	}
+
+	if !updateFlagExist {
+		// Add the column since it doesn't exist
+		query := "ALTER TABLE projeventlink ADD COLUMN updateflag BOOLEAN DEFAULT FALSE;"
+		_, err = d.Db.Exec(query)
+		if err != nil {
+			return err
+		}
+		logger.Println("Column updateflag added to table projeventlink")
+	} else {
+		logger.Println("Column updateflag already exists in table projeventlink")
 	}
 	return nil
 }
@@ -563,12 +580,13 @@ func (d *Database) AlterTable() error {
 }
 
 // This should be the only function required to read links
-func (d *Database) QueryLinks() (map[string]int, map[string]int, error) {
+func (d *Database) QueryLinks() (map[string]int, map[string]int, map[string]bool, error) {
 	records := make(map[string]int)
 	actIDs := make(map[string]int)
+	updateFlags := make(map[string]bool)
 
 	// Query the table for all rows
-	rows, err := d.Db.Query("SELECT projcode, eventid, activity FROM projeventlink")
+	rows, err := d.Db.Query("SELECT projcode, eventid, activity, updateflag FROM projeventlink")
 	if err != nil {
 		logger.Fatal(err)
 	}
@@ -579,10 +597,11 @@ func (d *Database) QueryLinks() (map[string]int, map[string]int, error) {
 		var projCode string
 		var eventID int
 		var activityID sql.NullInt32
-		err = rows.Scan(&projCode, &eventID, &activityID) // Scan each row into the variables
+		var updateFlag sql.NullBool
+		err = rows.Scan(&projCode, &eventID, &activityID, &updateFlag) // Scan each row into the variables
 		if err != nil {
 			logger.Println(err)
-			return map[string]int{}, map[string]int{}, err
+			return map[string]int{}, map[string]int{}, map[string]bool{}, err
 		}
 		// Add the result to the map
 		records[projCode] = eventID
@@ -590,18 +609,23 @@ func (d *Database) QueryLinks() (map[string]int, map[string]int, error) {
 		if activityID.Valid {
 			actIDs[projCode] = int(activityID.Int32)
 		}
+		updateFlags[projCode] = false
+		if updateFlag.Valid {
+			updateFlags[projCode] = updateFlag.Bool
+		}
 	}
 
 	// Check for any error that occurred during the iteration
 	if err = rows.Err(); err != nil {
 		logger.Println(err)
-		return map[string]int{}, map[string]int{}, err
+		return map[string]int{}, map[string]int{}, map[string]bool{}, err
 	}
 
 	// Print the map to verify the data
 	logger.Println("Records from the database:", records)
 	logger.Println("ActIds from the database:", actIDs)
-	return records, actIDs, nil
+	logger.Println("Update flags from the database:", updateFlags)
+	return records, actIDs, updateFlags, nil
 }
 
 func (d *Database) SaveLink(proj string, id int) error {
@@ -675,6 +699,70 @@ func (d *Database) DeleteLink(projCode string) error {
 	// } else {
 	// 	log.Printf("Deleted %d link(s) for projcode '%s'.\n", rows, projCode)
 	// }
+
+	return nil
+}
+
+func (d *Database) SetUpdateFlag() error {
+	sqlstmt := `UPDATE projeventlink SET updateflag = TRUE;`
+	tx, err := d.Db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+
+	stmt, err := tx.Prepare(sqlstmt)
+	if err != nil {
+		return fmt.Errorf("failed to prepare statement: %w", err)
+	}
+	defer stmt.Close()
+
+	_, err = stmt.Exec()
+	if err != nil {
+		return fmt.Errorf("failed to execute update: %w", err)
+	}
+
+	err = tx.Commit()
+	if err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return nil
+}
+
+func (d *Database) SetUpdateFlagFalse(projCodes []string) error {
+	if len(projCodes) == 0 {
+		return nil
+	}
+
+	// Create placeholders for the IN clause
+	placeholders := make([]string, len(projCodes))
+	args := make([]interface{}, len(projCodes))
+	for i := range projCodes {
+		placeholders[i] = "?"
+		args[i] = projCodes[i]
+	}
+
+	sqlstmt := fmt.Sprintf(`UPDATE projeventlink SET updateflag = FALSE WHERE projcode IN (%s);`, strings.Join(placeholders, ","))
+	tx, err := d.Db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+
+	stmt, err := tx.Prepare(sqlstmt)
+	if err != nil {
+		return fmt.Errorf("failed to prepare statement: %w", err)
+	}
+	defer stmt.Close()
+
+	_, err = stmt.Exec(args...)
+	if err != nil {
+		return fmt.Errorf("failed to execute update: %w", err)
+	}
+
+	err = tx.Commit()
+	if err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
 
 	return nil
 }
