@@ -1333,7 +1333,7 @@ func main() {
 func CheckEventCodeMap(m *model, entries ...i.EntryRow) (bool, error) {
 	// Check to see if we have all proj codes mapped to an event_id
 	check := true
-	added := make(map[string]bool, 5)
+	added := make(map[string]bool, 20)
 	for j := 0; j < len(entries); j++ {
 		_, ok := i.ProjCodeToTask[entries[j].Entry.ProjCode]
 		//_, ok2 := i.ProjCodeToAct[entries[j].Entry.ProjCode]
@@ -1355,7 +1355,7 @@ func CheckEventCodeMap(m *model, entries ...i.EntryRow) (bool, error) {
 
 			actitems := i.ActResp.ConstructActList()
 			m.listAct = list.New(actitems, list.NewDefaultDelegate(), 0, 0)
-			m.listAct.Title = fmt.Sprintf("Choose an activity for %s", entries[j].Entry.ProjCode)
+			m.listAct.Title = fmt.Sprintf("Choose an activity for %s", m.choice[0])
 			m.listAct.SetSize(m.winW, m.winH)
 		}
 	}
