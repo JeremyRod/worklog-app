@@ -1,5 +1,14 @@
 # Changelog
 
+## V1.1.7
+
+### Fixed
+- Summary view activity mismatched
+- Key combinations not working on mac (added alternates)
+
+### Added 
+- Alternate key combinations for mac users
+
 ## V1.1.6
 
 ### Fixed

@@ -65,11 +65,16 @@ If this doesn't exist then the user will need to use the login form when prompte
 ### What are these used for 
 Some managers would prefer a short recap of the action taken in a time entry period for reporting. Some users want to document important notes and task issues/fixes. The notes portions will bridge that gap, the notes are a personal optional note taking field associated with the entry that will be saved but will not be uploaded with the entry when uploading to scoro, this will continue to be the description.
 
+To switch to the notes view, Windows users can press Ctrl + Shift + Right, the left arrow key in the combination will take you back to the new entry view. Mac users can use shift + left/right (this also works on windows). 
 
+## Uploading
 User presses upload on an entry. If the event_id is unknown, the user will be prompted to select a Project/Event for all future project code (currently only for the current instance)
 This view should first prompt the user to enter their username and passwrod for scoro in to get a user token, another option can be using an env file to get the required details.
 
 If the Scoro task/bucket has changed after a Project code has been linked, the user can unlink and relink to a new task.
+
+## Time resetting
+A company may decide to change or update the bucket in which the hours get stored, this will mean that a linked proj code to event_id will be outdated and upload to the wrong place. A check on the first of every month (usually when reporting will occur) will pull a new list of tasks the user is assigned to and ensure that any links still exist in the task list. If they do not they are deleted and any submissions to that project code will need to be relinked when uploading. 
 
 ### Currently working on
 
