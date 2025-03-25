@@ -606,7 +606,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				case "tab":
 					m.state = Get
 
-				case "ctrl+shift+left", "ctrl+shift+right":
+				case "shift+left", "shift+right", "ctrl+shift+left", "ctrl+shift+right":
 					m.substate = NotesView
 
 				case "ctrl+c":
@@ -700,7 +700,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else {
 				m.textarea.Focus()
 				switch msg.String() {
-				case "ctrl+shift+left", "ctrl+shift+right":
+				case "shift+left", "shift+right", "ctrl+shift+left", "ctrl+shift+right":
 					m.substate = ListView
 
 				case "ctrl+c":
@@ -732,7 +732,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.resetModState()
 					m.state = Get
 
-				case "ctrl+shift+left", "ctrl+shift+right":
+				case "shift+left", "shift+right", "ctrl+shift+left", "ctrl+shift+right":
 					m.substate = NotesView
 
 				case "enter", "up", "down", "left", "right":
@@ -869,7 +869,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else {
 				m.modtextarea.Focus()
 				switch msg.String() {
-				case "ctrl+shift+left", "ctrl+shift+right":
+				case "shift+left", "shift+right", "ctrl+shift+left", "ctrl+shift+right":
 					m.substate = ListView
 
 				case "ctrl+c":
